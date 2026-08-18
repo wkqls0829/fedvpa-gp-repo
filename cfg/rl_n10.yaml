@@ -1,0 +1,123 @@
+# FedVPA-GP — Stage 2: z-conditioned DPO (conditional RLHF)
+# HH-RLHF, Qwen2-0.5B, K = 10 clients
+#
+# Run with federatedscope/llm/rlhf/main.py (NOT federatedscope/main.py) and
+# pass the Stage-1 config via --selector-cfg-file.
+#
+# rlhf_selector_checkpoint must point at the FINAL Stage-1 checkpoint. The
+# server writes it with a "final_" prefix, so cfg/selector_n10.yaml's
+# save_to of checkpoints/selector_n10.ckpt produces
+# checkpoints/final_selector_n10.ckpt.
+
+use_gpu: True
+device: 0
+
+early_stop:
+  patience: 0
+
+federate:
+  mode: standalone
+  client_num: 10
+  total_round_num: 70
+  save_to: "checkpoints/rl_n10.ckpt"
+  # Every 10 rounds: the Pareto-best round is typically well before the
+  # last one, so intermediate checkpoints are needed to recover it.
+  save_freq: 10
+  share_local_model: True
+  online_aggr: False
+
+data:
+  root: data/
+  type: 'hh-rlhf@llm'
+  splitter: 'iid'
+  splits: [0.9, 0.09, 0.01]
+
+model:
+  type: 'Qwen/Qwen2-0.5B@huggingface_llm'
+
+llm:
+  use: True
+  rlhf: True
+  tok_len: 1024
+  max_new_token: 512
+  num_completions: 2
+  best_res_update: False
+  grad_accum_step: 32
+  max_prompts_for_generation: 50
+  generation_batch_size: 3
+  # 0.1 rather than 0.5: a higher reward coefficient makes z-conditioned
+  # DPO diverge (training loss into the thousands).
+  reward_coeff: 0.1
+
+  rlhf_use_variational_selection: True
+  rlhf_use_variational_generation: True
+  rlhf_selector_checkpoint: "checkpoints/final_selector_n10.ckpt"
+
+  # --- z-conditioning ---------------------------------------------------
+  # Must match cfg/selector_n10.yaml. Without these the policy receives no
+  # per-client signal and collapses to a single monolithic preference.
+  vpl_use_z_embedding: True
+  vpl_z_source: 'hidden_state'
+  vpl_z_conditioning_mode: 'add'
+  vpl_adapter_dropout: 0.5
+
+  # --- Selector architecture (must mirror Stage 1 to load the ckpt) -----
+  vpl_latent_dim: 32
+  vpl_feature_method: 'choice_logits'
+  vpl_use_feature_difference: True
+  vpl_use_difference_only: True
+  vpl_deep_projection: True
+  vpl_max_logvar: -4.0
+  vpl_logit_dropout: 0.0
+  vpl_use_gp_prior: True
+  vpl_gp_temperature: 1.0
+  vpl_kl_weight: 0.01
+  vpl_orthogonal_weight: 1.0
+  vpl_orthogonal_orthonorm_weight: 0.1
+  vpl_use_manual_orthogonal_labels: True
+  vpl_num_prototypes: 2
+  vpl_prototype_scale: 5.0
+
+  adapter:
+    use: True
+    count: 3
+    args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
+
+trainer:
+  type: llmdporewardtrainer
+
+dataloader:
+  batch_size: 1
+  num_workers: 0
+  pin_memory: True
+
+train:
+  local_update_steps: 30
+  batch_or_epoch: batch
+  is_enable_half: True
+  optimizer:
+    type: AdamW
+    betas: (0.9, 0.95)
+    lr: 0.00001
+
+eval:
+  freq: 10
+  metrics: ['loss', 'acc', 'helpfulness_winrate', 'harmlessness_winrate']
+  best_res_update_round_wise_key: test_loss
+  # GPT win-rate evaluation. Requires OPENAI_API_KEY (see .env.example).
+  use_gpt_api_for_winrate: true
+  use_baseline_model_for_winrate: true
+  max_samples_for_reward: 100
+  # Eval prompts arrive in client order, so a low cap can exhaust the
+  # budget on one preference group before reaching the other.
+  max_iterations_for_winrate: 6000
+  count_flops: False
+
+expname: fedvpagp_rl_n10
+
+wandb:
+  use: False
+  name_user: ''
+  name_project: 'fedvpagp-rl'
+  online_track: True
+  client_train_info: False

@@ -1,0 +1,46 @@
+# FedVPA-GP requirements (from working biscuit env on local server)
+# Python 3.10, PyTorch 2.2.0+cu121
+#
+# Setup:
+#   conda create -n biscuit python=3.10 -y
+#   conda activate biscuit
+#   pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt
+#   pip install -e .[llm]
+
+# Core ML
+numpy==1.22.4
+scipy==1.7.3
+scikit-learn==1.0.2
+pandas==2.2.3
+
+# HuggingFace ecosystem
+transformers==4.51.3
+tokenizers==0.21.1
+accelerate==1.6.0
+peft==0.15.2
+datasets==3.6.0
+safetensors==0.5.3
+huggingface-hub==0.31.1
+sentencepiece==0.2.0
+
+# Logging & monitoring
+wandb==0.19.11
+tensorboard==2.11.2
+tensorboardX==2.6
+matplotlib==3.8.4
+
+# FederatedScope dependencies
+grpcio==1.71.0
+grpcio-tools==1.48.2
+pyyaml>=6.0
+fvcore==0.1.5.post20221221
+iopath==0.1.10
+pympler==1.1
+protobuf==3.20.3
+
+# NLP
+nltk==3.9.1
+
+# GPT-4 evaluation (winrate metrics)
+openai==2.24.0

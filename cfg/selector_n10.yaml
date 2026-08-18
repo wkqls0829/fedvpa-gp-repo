@@ -1,0 +1,137 @@
+# FedVPA-GP — Stage 1: Federated Variational Preference Selector
+# HH-RLHF, Qwen2-0.5B, K = 10 clients (5 sampled per round)
+#
+# Hyperparameters match Appendix A of the paper:
+#   orthogonal weight  lambda = 1.0
+#   orthonorm weight   gamma  = 0.1
+#   KL weight          beta   = 0.01
+#   latent dim         d      = 32
+#   prototypes         M      = 2
+#
+# Paths default to repo-relative directories and can be overridden on the
+# command line, e.g.:
+#   python federatedscope/main.py --cfg cfg/selector_n10.yaml \
+#       device 0 data.root /path/to/data federate.save_to /path/to/out.ckpt
+
+use_gpu: True
+device: 0
+
+early_stop:
+  patience: 0
+
+federate:
+  mode: standalone
+  client_num: 10
+  sample_client_num: 5
+  total_round_num: 50
+  save_to: "checkpoints/selector_n10.ckpt"
+  save_freq: 50
+  ignore_weight: True
+  share_local_model: True
+  online_aggr: False
+
+data:
+  root: data/
+  type: 'hh-rlhf@llm'
+  # Strict non-IID partition: half the clients hold only helpfulness pairs,
+  # half hold only harmlessness pairs (paper Sec. 5.1).
+  splitter: 'meta'
+  splits: [0.9, 0.09, 0.01]
+
+model:
+  type: 'Qwen/Qwen2-0.5B@huggingface_llm'
+
+llm:
+  use: True
+  tok_len: 1024
+  max_new_token: 512
+  accelerator:
+    use: False
+  chat:
+    max_len: 512
+  adapter:
+    use: True
+    count: 3
+    warmup:
+      use: True
+      round: 2
+    grouping:
+      use: False
+      round: 2
+    args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
+
+  # --- Inference network (paper Sec. 4.1) ------------------------------
+  # Difference embedding: delta_h = h_chosen - h_rejected, prompt tokens
+  # excluded. use_difference_only drops the raw chosen/rejected embeddings
+  # so the encoder sees preference-specific signal only.
+  vpl_latent_dim: 32
+  vpl_feature_method: 'choice_logits'
+  vpl_use_feature_difference: True
+  vpl_use_difference_only: True
+  vpl_deep_projection: True
+  vpl_max_logvar: -4.0
+  vpl_logit_dropout: 0.0
+
+  # --- Federated Mixture Prior (paper Sec. 4.1, Eq. 6-8) ---------------
+  # Peer posteriors aggregated with learnable Gumbel-Softmax weights.
+  vpl_use_gp_prior: True
+  vpl_gp_temperature: 1.0
+  vpl_kl_weight: 0.01
+
+  # --- Orthogonal Loss (paper Sec. 4.2, Eq. 9) -------------------------
+  # Manual labels use the ground-truth data category (helpful/harmless) for
+  # prototype assignment, which is the setting reported in the paper.
+  vpl_orthogonal_weight: 1.0
+  vpl_orthogonal_orthonorm_weight: 0.1
+  vpl_use_manual_orthogonal_labels: True
+  vpl_num_prototypes: 2
+  vpl_prototype_scale: 5.0
+
+  # --- z-conditioning ---------------------------------------------------
+  # These MUST match cfg/rl_n10.yaml. The selector has to train and save a
+  # z_to_embedding module, otherwise Stage 2 initialises it randomly and
+  # the DPO policy collapses.
+  vpl_use_z_embedding: True
+  vpl_z_source: 'hidden_state'
+  vpl_z_conditioning_mode: 'add'
+  vpl_adapter_dropout: 0.5
+
+  vpl_tsne_visualize_freq: 10
+  grad_accum_step: 8
+
+dataloader:
+  batch_size: 4
+  num_workers: 0
+  pin_memory: True
+
+train:
+  local_update_steps: 30
+  batch_or_epoch: batch
+  is_enable_half: True
+  optimizer:
+    type: AdamW
+    betas: (0.9, 0.95)
+    lr: 0.00001
+
+criterion:
+  type: CrossEntropyLoss
+
+trainer:
+  type: vplgprewardchoicetrainer
+  choices: ['A', 'B']
+
+eval:
+  freq: 5
+  metrics: ['loss', 'acc', 'vpl_kl_loss', 'vpl_reconstruction_loss', 'vpl_orthogonal_loss']
+  best_res_update_round_wise_key: train_avg_loss
+  max_samples_for_reward: 100
+  count_flops: False
+
+expname: fedvpagp_selector_n10
+
+wandb:
+  use: False
+  name_user: ''
+  name_project: 'fedvpagp-selector'
+  online_track: True
+  client_train_info: True
