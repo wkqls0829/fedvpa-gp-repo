@@ -9,11 +9,11 @@ A single CUDA GPU with at least 48 GB. Both stages were developed on an RTX A600
 | Stage | K=10 | K=100 |
 |---|---|---|
 | Stage 1 selector (50 rounds) | ~4 h | ~7 h |
-| Stage 2 DPO (70 rounds, GPT eval every 10) | ~14 h | ~20 h |
+| Stage 2 DPO (50 rounds, GPT eval every 10) | ~10 h | ~15 h |
 
 Stage 2 is dominated by response generation and GPT-judged evaluation rather than by the DPO updates themselves.
 
-You also need an OpenAI API key. Stage 2 evaluates with `gpt-4o-mini` as the judge, at 100 samples per evaluated round for each of helpfulness and harmlessness. Across 7 evaluated rounds that is roughly 1,400 judged comparisons per run.
+You also need an OpenAI API key. Stage 2 evaluates with `gpt-4o-mini` as the judge, at 100 samples per evaluated round for each of helpfulness and harmlessness. Across the 5 evaluated rounds of a 50-round run that is roughly 1,000 judged comparisons.
 
 ## Step 1 — Environment
 
@@ -106,7 +106,7 @@ grep -oE "'Round': [0-9]+, 'Results_raw': \{[^}]*\}" outputs/rl_n100.log \
   | sed -E "s/.*'Round': ([0-9]+).*helpfulness_winrate': ([0-9.]+), 'test_harmlessness_winrate': ([0-9.]+).*/round \1: helpful=\2 harmless=\3/"
 ```
 
-The reported operating point is the **Pareto-best round**, not the last one. Win-rates rise, peak somewhere in the middle of training, and then decline as the policy overfits the reward model — so evaluate the saved checkpoints and take the round that is best on both axes jointly. Taking round 69 by default will understate the result.
+The reported operating point is the **Pareto-best round**, not the last one. Win-rates rise, peak somewhere in the middle of training, and then decline as the policy overfits the reward model — so evaluate the saved checkpoints and take the round that is best on both axes jointly. Taking the final round by default will understate the result.
 
 ## Interpreting run-to-run variation
 
