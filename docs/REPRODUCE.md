@@ -72,9 +72,24 @@ Watch for these in the log:
 - `vpl_kl_loss` should settle to a small nonzero value. Driven to zero means posterior collapse: the latent has stopped carrying information.
 - `vpl_orthogonal_loss` should fall as the prototypes separate.
 - `acc` (preference prediction accuracy) should climb past 0.9 by the final rounds.
-- t-SNE plots land in `exp/{expname}/cross_client_z_tsne_round_{n}.png` every 10 rounds. Helpfulness and harmlessness clients should form visibly distinct clusters around their prototypes. If they overlap, the orthogonal loss is not doing its job.
+- t-SNE plots land in `exp/{expname}/sub_exp_{timestamp}/cross_client_z_tsne_round_{n}.png` every 10 rounds — note the `sub_exp_` subdirectory, not the parent. Helpfulness and harmlessness clients should form visibly distinct clusters around their prototypes. If they overlap, the orthogonal loss is not doing its job.
+
+A reference K=10 run on one A6000 took **4h14m** for the 50 rounds, converging to `acc` 0.993, `vpl_reconstruction_loss` 0.020, `vpl_orthogonal_loss` 0.523, and `vpl_kl_loss` holding steady around 16.
 
 The final checkpoint is written with a `final_` prefix, so `cfg/selector_n100.yaml`'s `save_to: checkpoints/selector_n100.ckpt` produces `checkpoints/final_selector_n100.ckpt`. Stage 2 needs that exact file.
+
+### Not every client ends up with a learned z
+
+Near the end of Stage 1 the server logs something like:
+
+```
+Computed average z for 7/10 clients for checkpoint saving (for RL training)
+WARNING: Missing z values for clients: [1, 7, 8]
+```
+
+This is expected, not a failure. `client_average_z_dict` is rebuilt from the clients sampled in recent rounds, so clients that happened not to be sampled late in training carry no entry. Stage 2 fills those gaps with category-aware defaults in `_fill_missing_client_z` (`federatedscope/llm/rlhf/load_vpl_components.py`), so training proceeds either way.
+
+Coverage is partial by design at every scale — the K=100 run behind the published numbers saved z for 40 of 100 clients. Only worry if the count is zero or very close to it, which would mean posterior collection never worked at all.
 
 ## Step 4 — Stage 2, z-conditioned DPO
 
