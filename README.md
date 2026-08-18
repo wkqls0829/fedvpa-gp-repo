@@ -115,14 +115,16 @@ Matching Appendix A of the paper.
 | Batch size | 4 | 1 |
 | Gradient accumulation | 8 | 32 |
 | Local update steps | 30 | 30 |
-| Total rounds | 50 | 70 |
+| Total rounds | 50 | 50 |
 | KL weight (β) | 0.01 | — |
 | Orthogonal weight (λ) | 1.0 | — |
 | Orthonorm weight (γ) | 0.1 | — |
 | Gumbel-Softmax temperature (τ) | 1.0 | — |
 | Latent dimension (d) | 32 | — |
+| Latent projection | MLP 32→64→32→\|C\| | — |
 | Prototypes (M) | 2 | — |
 | Prototype scale | 5.0 | — |
+| Orthogonal label assignment | balanced k-means | — |
 | Max log-variance | −4.0 | — |
 | LoRA rank / alpha / dropout | 8 / 16 / 0.05 | 8 / 16 / 0.05 |
 | Reward coefficient | — | 0.1 |
@@ -132,6 +134,14 @@ Two settings are easy to get wrong and both cause silent failure rather than an 
 **The z-conditioning block must be identical in both stages.** `vpl_use_z_embedding`, `vpl_z_source`, `vpl_z_conditioning_mode`, and `vpl_adapter_dropout` appear in the Stage 1 and Stage 2 configs alike. Stage 1 needs them so it trains and saves a `z_to_embedding` module; if it is absent from the checkpoint, Stage 2 initialises one randomly and the policy collapses to a single undifferentiated preference.
 
 **Reward coefficient and learning rate interact badly at scale.** At K=100, `reward_coeff: 0.5` combined with `lr: 5e-5` makes z-conditioned DPO diverge, with training loss reaching the thousands against a normal value near 1. The values above are the stable ones.
+
+### One deliberate deviation from the paper
+
+Appendix C.3.1 describes evaluation at "up to 30 samples per evaluation (for efficiency)". The configs here set `max_samples_for_reward: 100` instead.
+
+The reason is statistical. A win-rate measured on 30 judged comparisons carries a 95% confidence interval of roughly ±18 percentage points — wide enough to reorder the methods in Table 1 by chance alone. At 100 samples the interval narrows to about ±9.8 points, which is still not tight, but is enough to make a single run interpretable. Anyone trying to tell FedVPA-GP apart from FedVPL on a single run at n=30 will not be able to.
+
+Set it back to 30 if you want to match the stated protocol exactly and are willing to average over several seeds instead. Everything else in the table follows the paper as written.
 
 ## Citation
 

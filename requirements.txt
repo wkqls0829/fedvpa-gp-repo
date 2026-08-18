@@ -1,46 +1,55 @@
-# FedVPA-GP requirements (from working biscuit env on local server)
-# Python 3.10, PyTorch 2.2.0+cu121
+# FedVPA-GP — pinned to the environment the reported results were produced in.
+# Python 3.10.16, PyTorch 2.2.0 + CUDA 12.1, single 48 GB GPU.
 #
-# Setup:
-#   conda create -n biscuit python=3.10 -y
-#   conda activate biscuit
-#   pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+# PyTorch is NOT pinned here because it must come from the CUDA index.
+# Install it first, then this file. See docs/ENVIRONMENT.md for the full
+# walkthrough:
+#
+#   conda create -n fedvpagp python=3.10 -y
+#   conda activate fedvpagp
+#   pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
+#       --index-url https://download.pytorch.org/whl/cu121
 #   pip install -r requirements.txt
-#   pip install -e .[llm]
+#   pip install -e . --no-deps
 
-# Core ML
+# --- Core numerics ---------------------------------------------------------
+# numpy is held below 1.23 because scikit-learn 1.0.2 and scipy 1.7.3 are
+# built against the older ABI. scikit-learn is a hard requirement, not an
+# optional one: the server uses k-means to assign orthogonal prototype
+# labels every round.
 numpy==1.22.4
 scipy==1.7.3
 scikit-learn==1.0.2
 pandas==2.2.3
 
-# HuggingFace ecosystem
+# --- HuggingFace stack -----------------------------------------------------
 transformers==4.51.3
 tokenizers==0.21.1
 accelerate==1.6.0
 peft==0.15.2
 datasets==3.6.0
 safetensors==0.5.3
-huggingface-hub==0.31.1
+huggingface-hub==0.34.4
 sentencepiece==0.2.0
 
-# Logging & monitoring
+# --- Logging and plotting --------------------------------------------------
+# matplotlib is required, not optional: the trainer writes t-SNE plots of the
+# latent space during training.
 wandb==0.19.11
 tensorboard==2.11.2
 tensorboardX==2.6
 matplotlib==3.8.4
+tqdm==4.67.1
 
-# FederatedScope dependencies
+# --- FederatedScope runtime ------------------------------------------------
 grpcio==1.71.0
 grpcio-tools==1.48.2
-pyyaml>=6.0
+PyYAML==6.0.2
 fvcore==0.1.5.post20221221
 iopath==0.1.10
-pympler==1.1
+Pympler==1.1
 protobuf==3.20.3
 
-# NLP
+# --- Evaluation ------------------------------------------------------------
 nltk==3.9.1
-
-# GPT-4 evaluation (winrate metrics)
 openai==2.24.0

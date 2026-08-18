@@ -13,7 +13,7 @@ early_stop:
 federate:
   mode: standalone
   client_num: 100
-  total_round_num: 70
+  total_round_num: 50
   save_to: "checkpoints/rl_n100.ckpt"
   save_freq: 10
   share_local_model: True
@@ -23,7 +23,7 @@ data:
   root: data/
   type: 'hh-rlhf@llm'
   splitter: 'iid'
-  splits: [0.9, 0.09, 0.01]
+  splits: [0.8, 0.1, 0.1]
 
 model:
   type: 'Qwen/Qwen2-0.5B@huggingface_llm'
@@ -61,7 +61,7 @@ llm:
   vpl_kl_weight: 0.01
   vpl_orthogonal_weight: 1.0
   vpl_orthogonal_orthonorm_weight: 0.1
-  vpl_use_manual_orthogonal_labels: True
+  vpl_use_manual_orthogonal_labels: False
   vpl_num_prototypes: 2
   vpl_prototype_scale: 5.0
 

@@ -36,7 +36,7 @@ data:
   # Strict non-IID partition: half the clients hold only helpfulness pairs,
   # half hold only harmlessness pairs (paper Sec. 5.1).
   splitter: 'meta'
-  splits: [0.9, 0.09, 0.01]
+  splits: [0.8, 0.1, 0.1]
 
 model:
   type: 'Qwen/Qwen2-0.5B@huggingface_llm'
@@ -79,11 +79,12 @@ llm:
   vpl_kl_weight: 0.01
 
   # --- Orthogonal Loss (paper Sec. 4.2, Eq. 9) -------------------------
-  # Manual labels use the ground-truth data category (helpful/harmless) for
-  # prototype assignment, which is the setting reported in the paper.
+  # Prototype labels come from balanced k-means over the collected client
+  # means, per Table 4 of the paper. Setting manual labels to True instead
+  # assigns them from the ground-truth data category (helpful/harmless).
   vpl_orthogonal_weight: 1.0
   vpl_orthogonal_orthonorm_weight: 0.1
-  vpl_use_manual_orthogonal_labels: True
+  vpl_use_manual_orthogonal_labels: False
   vpl_num_prototypes: 2
   vpl_prototype_scale: 5.0
 
