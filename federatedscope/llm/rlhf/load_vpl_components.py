@@ -17,12 +17,12 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
     """
     Load VPL components (variational encoder, feature extractor, latent projection)
     from a trained selector model checkpoint.
-    
+
     Args:
         checkpoint_path: Path to the checkpoint file
         config: Configuration object with VPL hyperparameters
         device: Device to load models on
-        
+
     Returns:
         tuple: (variational_encoder, feature_extractor, latent_projection, z_to_embedding)
         or (None, None, None, None) if not found
@@ -30,11 +30,11 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
     if not os.path.exists(checkpoint_path):
         logger.warning(f"Checkpoint not found: {checkpoint_path}")
         return None, None, None
-    
+
     try:
         ckpt = torch.load(checkpoint_path, map_location=device)
         model_state_dict = ckpt.get('model', ckpt)
-        
+
         # Extract VPL hyperparameters from config
         vpl_latent_dim = getattr(config.llm, 'vpl_latent_dim', 32)
         vpl_use_gp_prior = getattr(config.llm, 'vpl_use_gp_prior', False)
@@ -42,13 +42,13 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
         vpl_use_llm_feature_extractor = getattr(config.llm, 'vpl_use_llm_feature_extractor', True)
         vpl_feature_method = getattr(config.llm, 'vpl_feature_method', 'choice_logits')
         vpl_use_difference_only = getattr(config.llm, 'vpl_use_difference_only', False)
-        
+
         # Determine input dimensions (must match VPLRewardChoiceTrainer logic)
         try:
             embedding_dim = getattr(config.model, 'hidden_size', None) or config.model.get('hidden_size', 2048)
         except Exception:
             embedding_dim = 2048  # Default for gemma-2b
-        
+
         if vpl_use_llm_feature_extractor and vpl_use_feature_difference:
             if vpl_use_difference_only:
                 raw_feature_dim = embedding_dim  # Only difference
@@ -61,9 +61,9 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
             raw_feature_dim = len(choices) * 2  # choice_logits for chosen and rejected
         else:
             raw_feature_dim = 2  # Fallback
-        
+
         feature_extractor_output_dim = 128  # From VPLRewardChoiceTrainer
-        
+
         # Initialize variational encoder
         if vpl_use_gp_prior:
             num_clients = getattr(config.federate, 'client_num', 10)
@@ -81,7 +81,7 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                 latent_dim=vpl_latent_dim,
                 hidden_dims=[512, 256, 128]
             ).to(device)
-        
+
         # Initialize feature extractor (must match VPLRewardChoiceTrainer architecture)
         # If vpl_use_llm_feature_extractor=True, use [raw_feature_dim -> 512 -> 256 -> 128]
         # Otherwise, use [raw_feature_dim -> 256 -> 512 -> 256 -> 128]
@@ -110,7 +110,7 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                 nn.Dropout(0.1),
                 nn.Linear(256, feature_extractor_output_dim)
             ).to(device)
-        
+
         # Initialize latent projection
         choices = getattr(config.trainer, 'choices', ['A', 'B'])
         latent_projection = nn.Linear(vpl_latent_dim, len(choices)).to(device)
@@ -159,17 +159,17 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                         pass
         except Exception:
             pass
-        
+
         if embedding_dim is None:
             # Fallback: try config attributes
             try:
                 embedding_dim = getattr(config.model, 'hidden_size', None) or getattr(config.model, 'embed_size', None)
             except Exception:
                 pass
-        
+
         if embedding_dim is None:
             embedding_dim = 2048  # Default fallback for gemma-2b
-        
+
         z_to_embedding = nn.Linear(vpl_latent_dim, embedding_dim).to(device)
         # Ensure z_to_embedding uses the same dtype as the model
         # Try to get model dtype from config
@@ -183,17 +183,17 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
             elif hasattr(torch, model_dtype):
                 z_to_embedding = z_to_embedding.to(getattr(torch, model_dtype))
         logger.info(f"Initialized z_to_embedding: {vpl_latent_dim} -> {embedding_dim} (model type: {getattr(config.model, 'type', 'unknown')}, dtype: {z_to_embedding.weight.dtype})")
-        
+
         # Try to load from checkpoint
         variational_encoder_loaded = False
         feature_extractor_loaded = False
         latent_projection_loaded = False
         z_to_embedding_loaded = False
-        
+
         # Load variational encoder weights (only once, not in loop)
         if not variational_encoder_loaded:
-            variational_encoder_keys = {k.replace('variational_encoder.', ''): v 
-                                       for k, v in model_state_dict.items() 
+            variational_encoder_keys = {k.replace('variational_encoder.', ''): v
+                                       for k, v in model_state_dict.items()
                                        if 'variational_encoder' in k}
             if variational_encoder_keys:
                 try:
@@ -202,11 +202,11 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                     logger.info(f"Loaded variational encoder from checkpoint")
                 except Exception as e:
                     logger.warning(f"Failed to load variational encoder: {e}")
-        
+
         # Load feature extractor weights (only once, not in loop)
         if not feature_extractor_loaded:
-            feature_extractor_keys = {k.replace('feature_extractor.', ''): v 
-                                     for k, v in model_state_dict.items() 
+            feature_extractor_keys = {k.replace('feature_extractor.', ''): v
+                                     for k, v in model_state_dict.items()
                                      if 'feature_extractor' in k}
             if feature_extractor_keys:
                 try:
@@ -215,11 +215,11 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                     logger.info(f"Loaded feature extractor from checkpoint")
                 except Exception as e:
                     logger.warning(f"Failed to load feature extractor: {e}")
-        
+
         # Load latent projection weights (only once, not in loop)
         if not latent_projection_loaded:
-            latent_projection_keys = {k.replace('latent_projection.', ''): v 
-                                     for k, v in model_state_dict.items() 
+            latent_projection_keys = {k.replace('latent_projection.', ''): v
+                                     for k, v in model_state_dict.items()
                                      if 'latent_projection' in k}
             if latent_projection_keys:
                 try:
@@ -256,12 +256,12 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
                 except Exception as e:
                     logger.warning(f"Failed to load z_to_embedding: {e}. Will use newly initialized one.")
                     z_to_embedding_loaded = False
-        
+
         if not (variational_encoder_loaded or feature_extractor_loaded or latent_projection_loaded or z_to_embedding_loaded):
             logger.warning("No VPL components found in checkpoint. Using randomly initialized components.")
-        
+
         return variational_encoder, feature_extractor, latent_projection, z_to_embedding
-        
+
     except Exception as e:
         logger.error(f"Failed to load VPL components from checkpoint: {e}")
         return None, None, None, None
@@ -270,21 +270,21 @@ def load_vpl_components_from_checkpoint(checkpoint_path, config, device='cuda:0'
 def load_vpl_components_from_trainer(trainer):
     """
     Extract VPL components directly from a VPLRewardChoiceTrainer instance.
-    
+
     Args:
         trainer: VPLRewardChoiceTrainer instance
-        
+
     Returns:
         tuple: (variational_encoder, feature_extractor, latent_projection)
     """
     if not hasattr(trainer, 'variational_encoder'):
         logger.error("Trainer does not have variational_encoder. Not a VPL trainer?")
         return None, None, None
-    
+
     variational_encoder = trainer.variational_encoder
     feature_extractor = trainer.feature_extractor if hasattr(trainer, 'feature_extractor') else None
     latent_projection = trainer.latent_projection if hasattr(trainer, 'latent_projection') else None
-    
+
     return variational_encoder, feature_extractor, latent_projection
 
 
@@ -292,21 +292,21 @@ def load_client_average_z_from_checkpoint(checkpoint_path, device='cuda:0'):
     """
     Load client-specific average z values (z_mu) from a selector checkpoint.
     These are the average z values computed from training data for each client.
-    
+
     Args:
         checkpoint_path: Path to the checkpoint file
         device: Device to load tensors on
-        
+
     Returns:
         dict: {client_id: z_mu_tensor} or None if not found
     """
     if not os.path.exists(checkpoint_path):
         logger.warning(f"Checkpoint not found: {checkpoint_path}")
         return None
-    
+
     try:
         ckpt = torch.load(checkpoint_path, map_location=device)
-        
+
         # Priority 1: Check for client_average_z_dict (saved from server during training)
         if 'client_average_z_dict' in ckpt:
             client_average_z_dict = ckpt['client_average_z_dict']
@@ -323,7 +323,7 @@ def load_client_average_z_from_checkpoint(checkpoint_path, device='cuda:0'):
                         result[client_id_int] = torch.tensor(z_mu, dtype=torch.float32, device=device)
                 logger.info(f"Loaded client average z for {len(result)} clients from checkpoint (client_average_z_dict)")
                 return result
-        
+
         # Priority 2: Check if checkpoint has client z distributions (old format)
         if 'client_z_mus' in ckpt:
             # New format: dictionary of client_id -> z_mu
@@ -340,11 +340,11 @@ def load_client_average_z_from_checkpoint(checkpoint_path, device='cuda:0'):
                         result[client_id] = torch.tensor(z_mu, dtype=torch.float32, device=device)
                 logger.info(f"Loaded average z for {len(result)} clients from checkpoint (client_z_mus)")
                 return result
-        
+
         # Fallback: try to extract from model state dict (if stored there)
         model_state_dict = ckpt.get('model', ckpt)
         client_z_mus = {}
-        
+
         # Look for keys like 'client_1_z_mu', 'client_2_z_mu', etc.
         for key, value in model_state_dict.items():
             if 'client_' in key and '_z_mu' in key:
@@ -361,11 +361,11 @@ def load_client_average_z_from_checkpoint(checkpoint_path, device='cuda:0'):
                             client_z_mus[client_id] = torch.tensor(value, dtype=torch.float32, device=device)
                 except (ValueError, IndexError):
                     continue
-        
+
         if len(client_z_mus) > 0:
             logger.info(f"Loaded average z for {len(client_z_mus)} clients from checkpoint (fallback method)")
             return client_z_mus
-        
+
         logger.warning("No client average z found in checkpoint. Will infer z from input during generation.")
         return None
 

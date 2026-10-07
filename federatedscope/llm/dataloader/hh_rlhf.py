@@ -189,7 +189,7 @@ def load_hh_rlhf_dataset(config, tokenizer):
     # Otherwise, use full dataset (default: -1 = no limit)
     max_train_samples = getattr(config.data, 'max_train_samples', -1)  # Default: -1 (no limit)
     max_test_samples = getattr(config.data, 'max_test_samples', -1)  # Default: -1 (no limit)
-    
+
     if max_train_samples > 0:
         # Limit each subset proportionally
         harmless_train_size = min(len(harmless_train), max_train_samples // 2)
@@ -197,7 +197,7 @@ def load_hh_rlhf_dataset(config, tokenizer):
         harmless_train = harmless_train.select(range(harmless_train_size))
         helpful_train = helpful_train.select(range(helpful_train_size))
         logger.info(f"Limited train dataset to {harmless_train_size + helpful_train_size} samples (max_train_samples={max_train_samples})")
-    
+
     if max_test_samples > 0:
         # Limit each subset proportionally
         harmless_test_size = min(len(harmless_test), max_test_samples // 2)
@@ -209,14 +209,14 @@ def load_hh_rlhf_dataset(config, tokenizer):
     # Combine into a single training and test set
     full_train_dataset = datasets.concatenate_datasets([harmless_train, helpful_train])
     full_test_dataset = datasets.concatenate_datasets([harmless_test, helpful_test])
-    
+
     # Wrap the raw data into LLMDataset objects
     train_dataset = LLMDataset(full_train_dataset,
                                tokenizer,
                                prompt_input=HH_RLHF_PROMPT_DICT['comparison'],
                                prompt_no_input=HH_RLHF_PROMPT_DICT['comparison'],
                                output_tag='choice')
-    
+
     test_dataset = LLMDataset(full_test_dataset,
                               tokenizer,
                               prompt_input=HH_RLHF_PROMPT_DICT['comparison'],
@@ -240,7 +240,7 @@ def load_hh_rlhf_for_rlhf(data_root,
     Loads and processes the hh-rlhf dataset from local files for the
     standalone RLHF script. It combines both helpful and harmless datasets.
     Uses the same data source and shard() method as selector training for consistency.
-    
+
     Args:
         data_root: Root directory for data
         config: Configuration object
@@ -251,12 +251,12 @@ def load_hh_rlhf_for_rlhf(data_root,
     """
     import random
     import numpy as np
-    
+
     # Fix seed for reproducibility (same as selector training)
     seed = 42
     random.seed(seed)
     np.random.seed(seed)
-    
+
     logger.info("Loading and processing hh-rlhf dataset from Hugging Face for RLHF (same as selector training)...")
 
     # Load from Hugging Face (same as selector training)
@@ -270,7 +270,7 @@ def load_hh_rlhf_for_rlhf(data_root,
     except Exception as e:
         logger.error(f"Failed to load dataset from Hugging Face. Error: {e}")
         raise e
-    
+
     # Process test splits only (for RLHF, we only need test prompts)
     def preprocess(example):
         """Preprocesses a single example to extract prompt."""
@@ -278,10 +278,10 @@ def load_hh_rlhf_for_rlhf(data_root,
         if prompt is None:
             return None
         return {"prompt": prompt}
-    
+
     harmless_test_data = harmless_raw['test'].map(preprocess, batched=False).filter(lambda x: x is not None)
     helpful_test_data = helpful_raw['test'].map(preprocess, batched=False).filter(lambda x: x is not None)
-    
+
     # harmless_test_data and helpful_test_data already have 'prompt' field from preprocess
     harmless_prompts = harmless_test_data
     helpful_prompts = helpful_test_data
@@ -292,27 +292,27 @@ def load_hh_rlhf_for_rlhf(data_root,
         #   - harmless: client_id 1-5 (training), 11-15 (unseen)
         #   - helpful: client_id 6-10 (training), 16-20 (unseen)
         # For normal experiments: harmless -> clients 1 to client_num//2, helpful -> clients client_num//2+1 to client_num
-        
+
         # Check if this is an unseen experiment (unseen_clients_id specified)
         unseen_clients_id = getattr(config.federate, 'unseen_clients_id', None) if hasattr(config, 'federate') else None
         is_unseen_experiment = unseen_clients_id is not None and len(unseen_clients_id) > 0
-        
+
         total_clients_per_type = client_num // 2  # 10 harmless, 10 helpful
-        
+
         # Create client-specific test data using shard() (same as selector training)
         client_test_data = {}
-        
+
         if is_unseen_experiment:
             # Unseen experiment: distribute so that half of each type are unseen
             unseen_clients_id_set = set(unseen_clients_id)
             training_clients = sorted([c for c in range(1, client_num + 1) if c not in unseen_clients_id_set])
             unseen_clients = sorted(list(unseen_clients_id_set))
-            
+
             training_harmless_num = len(training_clients) // 2  # 5
             training_helpful_num = len(training_clients) - training_harmless_num  # 5
             unseen_harmless_num = len(unseen_clients) // 2  # 5
             unseen_helpful_num = len(unseen_clients) - unseen_harmless_num  # 5
-            
+
             # Assign harmless data: first to training clients, then to unseen clients
             harmless_shard_idx = 0
             # Training harmless clients (client_id 1-5)
@@ -333,7 +333,7 @@ def load_hh_rlhf_for_rlhf(data_root,
                     client_prompts = client_prompts[:max_num_test]
                 client_test_data[client_id] = client_prompts
                 harmless_shard_idx += 1
-            
+
             # Assign helpful data: first to training clients, then to unseen clients
             helpful_shard_idx = 0
             # Training helpful clients (client_id 6-10)
@@ -354,7 +354,7 @@ def load_hh_rlhf_for_rlhf(data_root,
                     client_prompts = client_prompts[:max_num_test]
                 client_test_data[client_id] = client_prompts
                 helpful_shard_idx += 1
-            
+
             # Log unseen experiment info
             logger.info(f"Split test data by client using shard() (unseen experiment): {len(client_test_data)} clients")
             logger.info(f"  Training harmless clients: {training_clients[:training_harmless_num]}, Training helpful clients: {training_clients[training_harmless_num:]}")
@@ -371,44 +371,44 @@ def load_hh_rlhf_for_rlhf(data_root,
             else:
                 harmless_clients_num = client_num // 2
                 helpful_clients_num = client_num - harmless_clients_num
-            
+
             # Assign harmless data to clients 1 to harmless_clients_num using shard()
             if harmless_clients_num > 0:
                 for i in range(harmless_clients_num):
                     client_id = i + 1
                     # Use shard() method (same as selector training)
                     client_test_shard = harmless_prompts.shard(num_shards=harmless_clients_num, index=i)
-                    
+
                     # Convert to list format
                     client_prompts = list(client_test_shard)
-                    
+
                     # Limit per client if max_num_test is specified
                     if max_num_test > 0:
                         client_prompts = client_prompts[:max_num_test]
-                    
+
                     client_test_data[client_id] = client_prompts
-            
+
             # Assign helpful data to clients harmless_clients_num+1 to client_num using shard()
             if helpful_clients_num > 0:
                 for i in range(helpful_clients_num):
                     client_id = harmless_clients_num + i + 1
                     # Use shard() method (same as selector training)
                     client_test_shard = helpful_prompts.shard(num_shards=helpful_clients_num, index=i)
-                    
+
                     # Convert to list format
                     client_prompts = list(client_test_shard)
-                    
+
                     # Limit per client if max_num_test is specified
                     if max_num_test > 0:
                         client_prompts = client_prompts[:max_num_test]
-                    
+
                     client_test_data[client_id] = client_prompts
-            
+
             logger.info(f"Split test data by client using shard() (same as selector training): {len(client_test_data)} clients, "
                        f"harmless clients: 1-{harmless_clients_num}, helpful clients: {harmless_clients_num+1}-{client_num}")
             for client_id, prompts in client_test_data.items():
                 logger.info(f"  Client {client_id}: {len(prompts)} test prompts")
-        
+
         if raw_no_prompt:
             return (client_test_data, None, None)
         else:

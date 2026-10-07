@@ -56,7 +56,7 @@ def get_rlhf_prompts_dataset(config):
     Uses config.data.root directly (should be set appropriately by scripts for cluster vs local server).
     """
     dataset_name, _ = config.data.type.split("@")
-    
+
     # Use config.data.root directly (set by scripts based on environment)
     base_data_root = config.data.root
     logger.info(f"Using data root from config: {base_data_root}")
@@ -130,7 +130,7 @@ def get_rlhf_prompts_dataset(config):
         # Check if split_by_client is needed
         split_by_client = getattr(config.data, 'split_by_client', False)
         client_num = getattr(config.federate, 'client_num', None)
-        
+
         list_train_prompts, _, _ = load_ultrafeedback_for_rlhf(
             data_root,
             config,
@@ -222,24 +222,24 @@ class RLHF_finetuning:
         self.device = device
         self._monitor = Monitor(config, monitored_object=self)
         self.selector_cfg = selector_cfg  # Store selector config
-        
+
         # Client-specific average z values (computed once and reused)
         # {client_id: z_mu_tensor}
         self.client_average_z_dict = None
-        
+
         # Client-specific test data (for seen/unseen evaluation)
         # {client_id: [prompt_dict, ...]}
         self.client_test_data = None
-        
+
         # Try to get client_num from checkpoint first (for standalone mode where config.client_num=1)
         # Priority: checkpoint > selector_cfg > config
         self.num_clients = None
-        
+
         # Priority 1: Try to load from checkpoint (for standalone mode)
         selector_ckpt_path = getattr(config.llm, 'rlhf_selector_checkpoint', None)
         if selector_ckpt_path is None:
             selector_ckpt_path = getattr(config.llm, 'selector_save_to', None)
-        
+
         if selector_ckpt_path and os.path.exists(selector_ckpt_path):
             try:
                 from federatedscope.llm.rlhf.load_vpl_components import load_client_average_z_from_checkpoint
@@ -269,14 +269,14 @@ class RLHF_finetuning:
                         logger.info(f"Loaded client_num={self.num_clients} from checkpoint (max client_id in client_average_z_dict)")
             except Exception as e:
                 logger.debug(f"Failed to load client_num from checkpoint: {e}")
-        
+
         # Priority 2: Use selector config's client_num if available
         if self.num_clients is None and selector_cfg is not None:
             selector_client_num = getattr(selector_cfg.federate, 'client_num', None)
             if selector_client_num is not None and selector_client_num > 1:  # Only use if > 1 (not standalone)
                 self.num_clients = selector_client_num
                 logger.info(f"Using selector config's client_num: {self.num_clients} (from selector training)")
-        
+
         # Priority 3: Use RL config's client_num (fallback)
         if self.num_clients is None:
             self.num_clients = getattr(config.federate, 'client_num', 10)
@@ -320,14 +320,14 @@ class RLHF_finetuning:
         use_variational_generation = getattr(self.config.llm, 'rlhf_use_variational_generation', False)
         use_variational_selection = getattr(self.config.llm, 'rlhf_use_variational_selection', False)
         is_vpl_model = False
-        
+
         # If either variational generation or selection is enabled, we need to load VPL components and client average z
         if use_variational_generation or use_variational_selection:
             # Check if selector checkpoint has VPL components
             selector_ckpt_path = getattr(self.config.llm, 'rlhf_selector_checkpoint', None)
             if selector_ckpt_path is None:
                 selector_ckpt_path = getattr(self.config.llm, 'selector_save_to', None)
-            
+
             # Try to find checkpoint with final_ prefix if original path doesn't exist
             if selector_ckpt_path:
                 if not os.path.exists(selector_ckpt_path):
@@ -341,7 +341,7 @@ class RLHF_finetuning:
                     else:
                         logger.warning(f"Selector checkpoint not found: {selector_ckpt_path} or {final_path}")
                         selector_ckpt_path = None
-            
+
             if selector_ckpt_path and os.path.exists(selector_ckpt_path):
                 try:
                     from federatedscope.llm.rlhf.load_vpl_components import load_vpl_components_from_checkpoint, load_client_average_z_from_checkpoint
@@ -351,7 +351,7 @@ class RLHF_finetuning:
                     if variational_encoder is not None and feature_extractor is not None:
                         is_vpl_model = True
                         logger.info("VPL model detected. Will use client-specific z for generation/selection.")
-                    
+
                     # Load client average z (required for both generation and selection)
                     if self.client_average_z_dict is None:
                         self.client_average_z_dict = load_client_average_z_from_checkpoint(
@@ -368,21 +368,21 @@ class RLHF_finetuning:
                                          f"This will cause issues for {'generation' if use_variational_generation else ''} "
                                          f"{'and ' if use_variational_generation and use_variational_selection else ''}"
                                          f"{'selection' if use_variational_selection else ''}.")
-                    
+
                     # Compute z for unseen clients if this is an unseen experiment
                     if self.selector_cfg is not None:
                         unseen_clients_id = getattr(self.selector_cfg.federate, 'unseen_clients_id', [])
                         if len(unseen_clients_id) > 0:
                             logger.info(f"Unseen experiment detected. Computing z for unseen clients: {unseen_clients_id}")
                             self._compute_unseen_client_z_from_training_data(
-                                selector_ckpt_path, 
-                                variational_encoder, 
+                                selector_ckpt_path,
+                                variational_encoder,
                                 feature_extractor,
                                 unseen_clients_id
                             )
                 except Exception as e:
                     logger.debug(f"Could not load VPL components: {e}. Using standard generation.")
-        
+
         # Assign client_id to prompts only for VPL models
         if is_vpl_model:
             num_clients = self.num_clients
@@ -478,21 +478,21 @@ class RLHF_finetuning:
             json.dump(list_pairwise_data, open(gen_fp, "w"))
             logger.info("The generation process is done, and save "
                         f"to {gen_fp}.")
-            
+
             # Visualize client-specific average z values after generation (for VPL models)
             if is_vpl_model and self.client_average_z_dict is not None and len(self.client_average_z_dict) > 0:
                 try:
                     from federatedscope.llm.llm_local.z_visualization import visualize_cross_client_z
                     import numpy as np
                     import torch
-                    
+
                     logger.info("Visualizing client-specific average z values used for generation...")
-                    
+
                     # Prepare z values and client labels
                     z_values_list = []
                     client_labels_list = []
                     orthogonal_labels_list = []
-                    
+
                     # Build dynamic category map
                     _ds_type = getattr(
                         self.config.data, 'type', '').lower()
@@ -519,14 +519,14 @@ class RLHF_finetuning:
                         client_labels_list.append(client_id)
                         orthogonal_labels_list.append(
                             _cat_map.get(client_id, 0))
-                    
+
                     if len(z_values_list) > 0:
                         z_array = np.array(z_values_list)
-                        
+
                         # Visualize
                         output_dir = self.config.outdir
                         wandb_project = getattr(self.config.wandb, 'name_project', None)
-                        
+
                         visualize_cross_client_z(
                             z_values=z_array,
                             client_labels=client_labels_list,
@@ -537,7 +537,7 @@ class RLHF_finetuning:
                             wandb_project=wandb_project
                         )
                         logger.info(f"Visualized {len(z_values_list)} client-specific average z values used for generation")
-                        
+
                         # Log to WandB
                         if self.config.wandb.use and self.config.wandb.online_track:
                             try:
@@ -561,11 +561,11 @@ class RLHF_finetuning:
 
         list_preference_data = None
         should_regenerate = False
-        
+
         if os.path.exists(fp):
             list_preference_data = json.load(open(fp, "r"))
             logger.info(f"Loaded preference data from existing file: {fp} ({len(list_preference_data)} samples)")
-            
+
             # Check if data has 'choice' key (required for LLMComparisonDataset)
             if len(list_preference_data) > 0:
                 if 'choice' not in list_preference_data[0]:
@@ -586,7 +586,7 @@ class RLHF_finetuning:
             elif len(list_preference_data) == 0:
                 logger.warning(f"Loaded preference data file is empty. Regenerating...")
                 should_regenerate = True
-            
+
             if should_regenerate:
                 # Delete the file and regenerate
                 os.remove(fp)
@@ -601,36 +601,36 @@ class RLHF_finetuning:
             logger.info("Select the better response.")
             logger.info("For VPL: Splitting pairwise data into harmlessness and helpfulness sets, "
                        "then performing binary selection with client 1 (z_1) and client 2 (z_2) separately.")
-            
+
             # Check if using variational selection
             use_variational_selection = getattr(self.config.llm, 'rlhf_use_variational_selection', False)
-            
+
             if use_variational_selection:
                 logger.info("Using variational selection with VPL posterior.")
                 from federatedscope.llm.rlhf.variational_selector import variational_better_response
                 from federatedscope.llm.rlhf.load_vpl_components import load_vpl_components_from_checkpoint
-                
+
                 # Load VPL components from selector checkpoint
                 selector_ckpt_path = getattr(self.config.llm, 'rlhf_selector_checkpoint', None)
                 if selector_ckpt_path is None:
                     # Try to infer from selector config
                     selector_ckpt_path = getattr(self.config.llm, 'selector_save_to', None)
-                
+
                 variational_encoder = None
                 feature_extractor = None
                 latent_projection = None
                 z_to_embedding = None
-                
+
                 if selector_ckpt_path and os.path.exists(selector_ckpt_path):
                     logger.info(f"Loading VPL components from {selector_ckpt_path}")
                     variational_encoder, feature_extractor, latent_projection, z_to_embedding = load_vpl_components_from_checkpoint(
                         selector_ckpt_path, self.config, device=self.device
                     )
-                
+
                 if variational_encoder is None:
                     logger.warning("Could not load VPL components. Falling back to standard selection.")
                     use_variational_selection = False
-                
+
                 # Load client average z if available (for client-specific selection)
                 if self.client_average_z_dict is None:
                     # Try to load from checkpoint if not already loaded
@@ -642,7 +642,7 @@ class RLHF_finetuning:
                         self._fill_z_dict_with_category_mean()
                         if self.client_average_z_dict is not None and len(self.client_average_z_dict) > 0:
                             logger.info(f"Loaded client average z for {len(self.client_average_z_dict)} clients for selection")
-            
+
             if use_variational_selection and self.client_average_z_dict is not None and len(self.client_average_z_dict) > 0:
                 # For each pairwise data, perform binary selection with assigned client z values
                 # Each pair has harmless_client_id and helpful_client_id assigned during generation
@@ -651,30 +651,30 @@ class RLHF_finetuning:
                 if tokenizer_for_choices is None:
                     raise ValueError("Both selector_tokenizer and generator_tokenizer are None. Cannot perform selection.")
                 choices = [tokenizer_for_choices(f": {c}")["input_ids"][-1] for c in ["A", "B"]]
-                
+
                 # Group pairwise data by client assignment
                 # Each pair will be conditioned with both its harmless_client_id and helpful_client_id
                 harmless_pairs = []
                 helpful_pairs = []
-                
+
                 for pair_data in list_pairwise_data:
                     harmless_client_id = pair_data.get('harmless_client_id', None)
                     helpful_client_id = pair_data.get('helpful_client_id', None)
-                    
+
                     if harmless_client_id is not None:
                         harmless_pair = copy.deepcopy(pair_data)
                         harmless_pair['client_id'] = harmless_client_id  # Set client_id for selection
                         harmless_pairs.append(harmless_pair)
-                    
+
                     if helpful_client_id is not None:
                         helpful_pair = copy.deepcopy(pair_data)
                         helpful_pair['client_id'] = helpful_client_id  # Set client_id for selection
                         helpful_pairs.append(helpful_pair)
-                
+
                 logger.info(f"Grouped {len(list_pairwise_data)} pairwise samples:")
                 logger.info(f"  - Harmlessness pairs: {len(harmless_pairs)} (with assigned harmless_client_id)")
                 logger.info(f"  - Helpfulness pairs: {len(helpful_pairs)} (with assigned helpful_client_id)")
-                
+
                 # Perform binary selection for harmlessness pairs (using assigned harmless_client_id z)
                 harmless_preference = []
                 if len(harmless_pairs) > 0:
@@ -686,7 +686,7 @@ class RLHF_finetuning:
                         if client_id not in harmless_by_client:
                             harmless_by_client[client_id] = []
                         harmless_by_client[client_id].append(pair)
-                    
+
                     for client_id, client_pairs in harmless_by_client.items():
                         if client_id in self.client_average_z_dict:
                             client_z_dict = {client_id: self.client_average_z_dict[client_id]}
@@ -741,7 +741,7 @@ class RLHF_finetuning:
                                 harmless_preference.extend(client_preference)
                             else:
                                 logger.error(f"Client {client_id} z not found and no fallback available. Skipping {len(client_pairs)} pairs.")
-                
+
                 # Perform binary selection for helpfulness pairs (using assigned helpful_client_id z)
                 helpful_preference = []
                 if len(helpful_pairs) > 0:
@@ -753,7 +753,7 @@ class RLHF_finetuning:
                         if client_id not in helpful_by_client:
                             helpful_by_client[client_id] = []
                         helpful_by_client[client_id].append(pair)
-                    
+
                     for client_id, client_pairs in helpful_by_client.items():
                         if client_id in self.client_average_z_dict:
                             client_z_dict = {client_id: self.client_average_z_dict[client_id]}
@@ -808,10 +808,10 @@ class RLHF_finetuning:
                                 helpful_preference.extend(client_preference)
                             else:
                                 logger.error(f"Client {client_id} z not found and no fallback available. Skipping {len(client_pairs)} pairs.")
-                
+
                 # Combine both preference types
                 list_preference_data = harmless_preference + helpful_preference
-                
+
                 logger.info(f"Performed binary selection for all {len(list_pairwise_data)} pairwise samples:")
                 logger.info(f"  - Harmlessness: {len(harmless_preference)} samples (with assigned harmless_client_id z)")
                 logger.info(f"  - Helpfulness: {len(helpful_preference)} samples (with assigned helpful_client_id z)")
@@ -824,7 +824,7 @@ class RLHF_finetuning:
                     raise ValueError("Both selector_tokenizer and generator_tokenizer are None. Cannot perform selection.")
                 choices = [tokenizer_for_choices(f": {c}")["input_ids"][-1] for c in ["A", "B"]]
                 use_provided_z = any('z' in sample for sample in list_pairwise_data)
-                
+
                 list_preference_data = variational_better_response(
                     list_pairwise_data,
                     self.selector_model,
@@ -857,7 +857,7 @@ class RLHF_finetuning:
                     selection_tokenizer = self.selector_tokenizer
                     selection_model = self.selector_model
                     selection_prompt = self.selector_prompt
-                
+
                 list_preference_data = self._choose_better_response(
                     list_pairwise_data,
                     selection_model,
@@ -865,7 +865,7 @@ class RLHF_finetuning:
                     selection_prompt,
                 )
             logger.info(list_preference_data[0])
-            
+
             # Find conflicting selections: same response pair, different choices for harmlessness vs helpfulness
             # Group by (prompt, output_A, output_B) to find same pairs
             pair_to_selections = {}
@@ -874,23 +874,23 @@ class RLHF_finetuning:
                 output_A = sample.get('output_A', '')
                 output_B = sample.get('output_B', '')
                 pair_key = (prompt, output_A, output_B)
-                
+
                 if pair_key not in pair_to_selections:
                     pair_to_selections[pair_key] = []
                 pair_to_selections[pair_key].append(sample)
-            
+
             # Find conflicting pairs: same pair with different choices for harmlessness and helpfulness
             conflicting_pairs = []
             for pair_key, selections in pair_to_selections.items():
                 # Check if we have both harmlessness and helpfulness selections
                 harmless_selection = [s for s in selections if s.get('preference_type') == 'harmlessness']
                 helpful_selection = [s for s in selections if s.get('preference_type') == 'helpfulness']
-                
+
                 if len(harmless_selection) > 0 and len(helpful_selection) > 0:
                     # Check if they made different choices
                     harmless_choice = harmless_selection[0].get('choice', None)
                     helpful_choice = helpful_selection[0].get('choice', None)
-                    
+
                     if harmless_choice is not None and helpful_choice is not None and harmless_choice != helpful_choice:
                         # Conflicting: same pair, different choices
                         conflicting_pairs.append({
@@ -898,13 +898,13 @@ class RLHF_finetuning:
                             'harmless': harmless_selection[0],
                             'helpful': helpful_selection[0]
                         })
-            
+
             # Calculate statistics
             total_samples = len(list_preference_data)
             total_pairs = len(pair_to_selections)
             conflicting_count = len(conflicting_pairs)
             conflicting_ratio = (conflicting_count / total_pairs * 100) if total_pairs > 0 else 0.0
-            
+
             # Log statistics
             logger.info(f"=== Conflicting Selection Statistics ===")
             logger.info(f"Total preference samples: {total_samples} (harmlessness + helpfulness)")
@@ -912,7 +912,7 @@ class RLHF_finetuning:
             logger.info(f"Conflicting pairs (same pair, different choices): {conflicting_count} ({conflicting_ratio:.1f}% of pairs)")
             logger.info(f"Non-conflicting pairs: {total_pairs - conflicting_count} ({(total_pairs - conflicting_count)/total_pairs*100:.1f}% of pairs)")
             logger.info(f"=== End Statistics ===")
-            
+
             # Log first few conflicting examples
             if conflicting_count > 0:
                 logger.info(f"=== Conflicting Selection Examples (showing first {min(5, conflicting_count)} out of {conflicting_count}) ===")
@@ -920,12 +920,12 @@ class RLHF_finetuning:
                     prompt, output_A, output_B = conflict['pair_key']
                     harmless = conflict['harmless']
                     helpful = conflict['helpful']
-                    
+
                     harmless_choice = harmless.get('choice', None)
                     helpful_choice = helpful.get('choice', None)
                     harmless_chosen = 'A' if harmless_choice == 0 else 'B'
                     helpful_chosen = 'A' if helpful_choice == 0 else 'B'
-                    
+
                     logger.info(f"--- Conflicting Example {idx+1} ---")
                     logger.info(f"Prompt: {prompt[:300]}...")
                     logger.info(f"Response A: {output_A[:200]}...")
@@ -939,7 +939,7 @@ class RLHF_finetuning:
                     logger.info(f"--- End Conflicting Example {idx+1} ---")
             else:
                 logger.info("No conflicting selections found (all pairs had same choices for harmlessness and helpfulness)")
-            
+
             # save the choice to a file
             json.dump(list_preference_data, open(fp, "w"))
             logger.info(f"Save the selection results to file {fp}")
@@ -947,16 +947,16 @@ class RLHF_finetuning:
             if early_exiting:
                 # For choosing the answer
                 exit(0)
-        
+
         # Ensure list_preference_data is not None and has valid format
         if list_preference_data is None:
             logger.error("Failed to load or generate preference data. list_preference_data is None.")
             raise ValueError("list_preference_data is None. Check logs for errors in load_pairwise_data or binary selection.")
-        
+
         if len(list_preference_data) == 0:
             logger.error("Preference data is empty. Cannot proceed with training.")
             raise ValueError("list_preference_data is empty. Check logs for errors in load_pairwise_data or binary selection.")
-        
+
         # Validate data format: check if 'choice' key exists
         if len(list_preference_data) > 0:
             sample = list_preference_data[0]
@@ -975,25 +975,25 @@ class RLHF_finetuning:
         """
         Compute client-specific average z from training data using selector model.
         This is used when client average z is not available in checkpoint.
-        
+
         Args:
             selector_ckpt_path: Path to selector checkpoint
         """
         try:
             from federatedscope.llm.rlhf.load_vpl_components import load_vpl_components_from_checkpoint
             import torch
-            
+
             logger.info("Computing client-specific average z from training data...")
-            
+
             # Load VPL components
             variational_encoder, feature_extractor, _, _ = load_vpl_components_from_checkpoint(
                 selector_ckpt_path, self.config, device=self.device
             )
-            
+
             if variational_encoder is None or feature_extractor is None:
                 logger.warning("Cannot compute client average z: VPL components not available")
                 return
-            
+
             # Group prompts by client_id
             client_prompts = {i: [] for i in range(1, self.num_clients + 1)}
             for prompt_data in self.list_train_prompts:
@@ -1004,23 +1004,23 @@ class RLHF_finetuning:
                     client_id = (idx % self.num_clients) + 1
                 if 1 <= client_id <= self.num_clients:
                     client_prompts[client_id].append(prompt_data)
-            
+
             # Compute average z for each client
             self.client_average_z_dict = {}
             variational_encoder.eval()
             feature_extractor.eval()
-            
+
             vpl_latent_dim = getattr(self.config.llm, 'vpl_latent_dim', 32)
-            
+
             with torch.no_grad():
                 for client_id, prompts in client_prompts.items():
                     if len(prompts) == 0:
                         continue
-                    
+
                     # Sample a subset of prompts for efficiency (max 100 per client)
                     max_samples = min(100, len(prompts))
                     sampled_prompts = prompts[:max_samples]
-                    
+
                     # Extract features and compute z for each prompt
                     z_list = []
                     for prompt_data in sampled_prompts:
@@ -1033,18 +1033,18 @@ class RLHF_finetuning:
                         )
                         input_ids = input_tokens['input_ids'].to(self.device)
                         attention_mask = input_tokens['attention_mask'].to(self.device)
-                        
+
                         # Get embeddings
                         if hasattr(self.model, 'get_input_embeddings'):
                             input_embeddings = self.model.get_input_embeddings()(input_ids)
                         else:
                             # Fallback: use selector model
                             input_embeddings = self.selector_model.get_input_embeddings()(input_ids)
-                        
+
                         # Pool embeddings
                         mask = attention_mask.unsqueeze(-1).float()
                         pooled_embeddings = (input_embeddings * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
-                        
+
                         # Extract features and encode to z
                         # For standalone RL, we only have single prompt, so we use embedding-based features
                         # If feature_extractor expects choice_logits but we only have embeddings,
@@ -1052,7 +1052,7 @@ class RLHF_finetuning:
                         vpl_use_feature_difference = getattr(self.config.llm, 'vpl_use_feature_difference', True)
                         vpl_use_llm_feature_extractor = getattr(self.config.llm, 'vpl_use_llm_feature_extractor', True)
                         vpl_use_difference_only = getattr(self.config.llm, 'vpl_use_difference_only', False)
-                        
+
                         # Check if feature_extractor expects embeddings or choice_logits
                         # If it expects embeddings (vpl_use_llm_feature_extractor=True), use pooled_embeddings
                         # Otherwise, we can't extract choice_logits from single prompt, so use embeddings anyway
@@ -1081,7 +1081,7 @@ class RLHF_finetuning:
                             logger.warning(f"z_mu shape mismatch: expected {vpl_latent_dim}, got {z_mu.shape[-1]}")
                         z_mu = z_mu.view(-1)  # Ensure 1D: (latent_dim,)
                         z_list.append(z_mu)
-                    
+
                     if len(z_list) > 0:
                         # Average z for this client
                         z_stack = torch.stack(z_list)  # (num_samples, latent_dim)
@@ -1096,9 +1096,9 @@ class RLHF_finetuning:
                             logger.warning(f"avg_z shape mismatch: expected {vpl_latent_dim}, got {avg_z.shape[0]}")
                         self.client_average_z_dict[client_id] = avg_z
                         logger.info(f"Computed average z for client {client_id}: shape {avg_z.shape}, latent_dim={vpl_latent_dim}")
-            
+
             logger.info(f"Computed average z for {len(self.client_average_z_dict)} clients from training data")
-            
+
         except Exception as e:
             logger.error(f"Failed to compute client average z from training data: {e}")
             self.client_average_z_dict = None
@@ -1107,7 +1107,7 @@ class RLHF_finetuning:
         """
         Compute z distribution for unseen clients from their training data.
         Uses the same method as binary selector training: compute z from training batches and average.
-        
+
         Args:
             selector_ckpt_path: Path to selector checkpoint
             variational_encoder: Variational encoder from selector checkpoint
@@ -1121,48 +1121,48 @@ class RLHF_finetuning:
             from federatedscope.core.data import StandaloneDataDict
             from federatedscope.llm.dataset.llm_dataset import LLMDataset
             from federatedscope.llm.dataloader import LLMDataCollator
-            
+
             logger.info(f"Computing z distribution for {len(unseen_clients_id)} unseen clients from training data...")
-            
+
             if variational_encoder is None or feature_extractor is None:
                 logger.warning("Cannot compute unseen client z: VPL components not available")
                 return
-            
+
             if self.selector_cfg is None:
                 logger.warning("Cannot compute unseen client z: selector config not available")
                 return
-            
+
             # Create a temporary config for loading unseen client data
             # Use selector config as base, but set client_num to total (including unseen)
             temp_config = self.selector_cfg.clone()
             temp_config.federate.client_num = self.num_clients  # Total clients (including unseen)
             temp_config.data.root = self.data_root
-            
+
             # Load training data for unseen clients (same as selector training)
             # This will create data_dict with all clients including unseen
             data_container, _ = load_hh_rlhf_data(temp_config, client_cfgs=None)
-            
+
             if not isinstance(data_container, StandaloneDataDict):
                 logger.warning("Data container is not StandaloneDataDict. Cannot compute unseen client z.")
                 return
-            
+
             # Initialize client_average_z_dict if not exists
             if self.client_average_z_dict is None:
                 self.client_average_z_dict = {}
-            
+
             # Set models to eval mode
             variational_encoder.eval()
             feature_extractor.eval()
             if self.selector_model is not None:
                 self.selector_model.eval()
-            
+
             vpl_latent_dim = getattr(self.config.llm, 'vpl_latent_dim', 32)
             vpl_use_feature_difference = getattr(self.config.llm, 'vpl_use_feature_difference', True)
             vpl_use_difference_only = getattr(self.config.llm, 'vpl_use_difference_only', False)
-            
+
             # Get selector prompt format
             selector_prompt = self.selector_prompt
-            
+
             # Get choice tokens
             choices = getattr(self.config.trainer, 'choices', ['A', 'B'])
             choice_tokens = []
@@ -1174,30 +1174,30 @@ class RLHF_finetuning:
                     choice_token = self.selector_tokenizer.encode(choice, add_special_tokens=False)
                     if len(choice_token) > 0:
                         choice_tokens.append(choice_token[0])
-            
+
             if len(choice_tokens) < 2:
                 logger.warning(f"Could not find choice tokens. Using fallback.")
                 choice_tokens = [
                     self.selector_tokenizer.encode('A', add_special_tokens=False)[0] if len(self.selector_tokenizer.encode('A', add_special_tokens=False)) > 0 else 65,
                     self.selector_tokenizer.encode('B', add_special_tokens=False)[0] if len(self.selector_tokenizer.encode('B', add_special_tokens=False)) > 0 else 66
                 ]
-            
+
             # Process each unseen client
             with torch.no_grad():
                 for client_id in unseen_clients_id:
                     if client_id not in data_container:
                         logger.warning(f"Client {client_id} not found in data container. Skipping.")
                         continue
-                    
+
                     client_data = data_container[client_id]
                     train_data = client_data.train_data
-                    
+
                     if len(train_data) == 0:
                         logger.warning(f"Client {client_id} has no training data. Skipping.")
                         continue
-                    
+
                     logger.info(f"Computing z for unseen client {client_id} from {len(train_data)} training samples...")
-                    
+
                     # Create dataset and dataloader for this client's training data
                     # Convert to list of dicts with prompt, output_A, output_B, choice
                     list_train_dict = []
@@ -1207,7 +1207,7 @@ class RLHF_finetuning:
                             sample_dict = dict(sample)
                         else:
                             sample_dict = sample
-                        
+
                         # Format for binary choice: prompt, output_A (chosen), output_B (rejected), choice=" A"
                         list_train_dict.append({
                             'prompt': sample_dict.get('prompt', ''),
@@ -1215,7 +1215,7 @@ class RLHF_finetuning:
                             'output_B': sample_dict.get('rejected_response', ''),
                             'choice': ' A'  # Chosen is A
                         })
-                    
+
                     # Create LLMDataset for binary choice
                     train_dataset = LLMDataset(
                         list_train_dict,
@@ -1224,7 +1224,7 @@ class RLHF_finetuning:
                         prompt_no_input=selector_prompt,
                         output_tag='choice'
                     )
-                    
+
                     # Create DataLoader
                     train_dataloader = DataLoader(
                         train_dataset,
@@ -1234,10 +1234,10 @@ class RLHF_finetuning:
                         collate_fn=LLMDataCollator(tokenizer=self.selector_tokenizer),
                         pin_memory=False
                     )
-                    
+
                     # Collect z values from all batches
                     z_mu_list = []
-                    
+
                     for batch_idx, batch in enumerate(train_dataloader):
                         try:
                             input_ids = batch['input_ids'].to(self.device)
@@ -1245,7 +1245,7 @@ class RLHF_finetuning:
                             attention_mask = batch.get('attention_mask', None)
                             if attention_mask is not None:
                                 attention_mask = attention_mask.to(self.device)
-                            
+
                             # Forward pass through selector model to get logits and hidden states
                             if self.selector_model is not None:
                                 outputs = self.selector_model(
@@ -1257,9 +1257,9 @@ class RLHF_finetuning:
                             else:
                                 logger.warning("Selector model not available. Cannot compute z.")
                                 break
-                            
+
                             logits = outputs.logits
-                            
+
                             # Get hidden states if needed
                             hidden_states = None
                             if vpl_use_feature_difference:
@@ -1267,7 +1267,7 @@ class RLHF_finetuning:
                                     hidden_states = outputs.hidden_states[-1]
                                 elif hasattr(outputs, 'last_hidden_state'):
                                     hidden_states = outputs.last_hidden_state
-                            
+
                             # Extract preference features (same as VPL trainer)
                             # Use embedding difference method if available
                             if vpl_use_feature_difference and hidden_states is not None:
@@ -1275,16 +1275,16 @@ class RLHF_finetuning:
                                 batch_size, seq_len, hidden_dim = hidden_states.shape
                                 shift_labels = labels[..., 1:].contiguous()
                                 shift_hidden = hidden_states[..., :-1, :].contiguous()
-                                
+
                                 A_token, B_token = choice_tokens[0], choice_tokens[1]
                                 A_positions = (shift_labels == A_token)
                                 B_positions = (shift_labels == B_token)
-                                
+
                                 features_list = []
                                 for b in range(batch_size):
                                     A_pos = A_positions[b]
                                     B_pos = B_positions[b]
-                                    
+
                                     if A_pos.any() and B_pos.any():
                                         chosen_emb = shift_hidden[b, A_pos].mean(dim=0)
                                         rejected_emb = shift_hidden[b, B_pos].mean(dim=0)
@@ -1297,30 +1297,30 @@ class RLHF_finetuning:
                                     else:
                                         chosen_emb = shift_hidden[b].mean(dim=0)
                                         rejected_emb = shift_hidden[b].mean(dim=0)
-                                    
+
                                     feature_diff = chosen_emb - rejected_emb
-                                    
+
                                     if vpl_use_difference_only:
                                         feature_combined = feature_diff
                                     else:
                                         feature_combined = torch.cat([chosen_emb, rejected_emb, feature_diff], dim=0)
-                                    
+
                                     features_list.append(feature_combined)
-                                
+
                                 preference_features = torch.stack(features_list, dim=0)
                             else:
                                 # Fallback: use logits-based features
                                 shift_logits = logits[..., :-1, :].contiguous()
                                 shift_labels = labels[..., 1:].contiguous()
-                                
+
                                 batch_size = logits.shape[0]
                                 choice_logits_per_token = shift_logits[..., choice_tokens]
-                                
+
                                 features_list = []
                                 for choice_idx in range(len(choice_tokens)):
                                     choice_token = choice_tokens[choice_idx]
                                     choice_positions = (shift_labels == choice_token)
-                                    
+
                                     if choice_positions.any():
                                         batch_features = []
                                         for b in range(batch_size):
@@ -1334,42 +1334,42 @@ class RLHF_finetuning:
                                         features_list.append(torch.stack(batch_features))
                                     else:
                                         features_list.append(choice_logits_per_token[:, :, choice_idx].mean(dim=1))
-                                
+
                                 features = torch.stack(features_list, dim=1)
                                 preference_features = torch.cat([features, features], dim=1)
-                            
+
                             # Ensure float32
                             if preference_features.dtype != torch.float32:
                                 preference_features = preference_features.float()
-                            
+
                             # Extract features and encode to z
                             extracted_features = feature_extractor(preference_features)
                             z_mu, z_logvar = variational_encoder.encode(extracted_features)
-                            
+
                             # Store z_mu (mean) for averaging
                             z_mu_list.append(z_mu.detach().cpu())
-                            
+
                         except Exception as e:
                             logger.warning(f"Error processing batch {batch_idx} for client {client_id}: {e}")
                             continue
-                    
+
                     if len(z_mu_list) > 0:
                         # Average z_mu across all batches
                         z_mu_stack = torch.cat(z_mu_list, dim=0)  # (total_samples, latent_dim)
                         avg_z_mu = z_mu_stack.mean(dim=0)  # (latent_dim,)
-                        
+
                         # Ensure avg_z_mu is 1D
                         avg_z_mu = avg_z_mu.view(-1)
-                        
+
                         # Store in client_average_z_dict
                         self.client_average_z_dict[client_id] = avg_z_mu.to(self.device)
                         logger.info(f"Computed average z for unseen client {client_id}: shape {avg_z_mu.shape}, "
                                    f"from {len(z_mu_list)} batches ({z_mu_stack.shape[0]} total samples)")
                     else:
                         logger.warning(f"No z values computed for unseen client {client_id}")
-            
+
             logger.info(f"Computed z for {len([cid for cid in unseen_clients_id if cid in self.client_average_z_dict])} unseen clients")
-            
+
         except Exception as e:
             logger.error(f"Failed to compute unseen client z from training data: {e}")
             import traceback
@@ -1417,12 +1417,12 @@ class RLHF_finetuning:
             output_B="output_B",
             choice="choice",
         )
-        
+
         # Create DataLoader directly instead of using ClientData
         # to avoid initialization issues with ClientData's __init__
         from torch.utils.data import DataLoader
         from federatedscope.llm.dataloader import LLMRewardCollator
-        
+
         data_collator = LLMRewardCollator(tokenizer=self.tokenizer)
         train_dataloader = DataLoader(
             train_dataset,
@@ -1432,7 +1432,7 @@ class RLHF_finetuning:
             collate_fn=data_collator,
             pin_memory=self.config.dataloader.pin_memory,
         )
-        
+
         # Create data dict compatible with trainer expectations
         data = {
             'train': train_dataloader,
@@ -1449,7 +1449,7 @@ class RLHF_finetuning:
             only_for_eval=False,
             monitor=self._monitor,
         )
-        
+
         # Set selector_model in trainer's ctx for winrate evaluation
         # This allows winrate metrics to use the selector model for fair comparison
         if hasattr(self.trainer, 'ctx'):
@@ -1465,18 +1465,18 @@ class RLHF_finetuning:
         try:
             from federatedscope.llm.dataset.llm_dataset import LLMDataset
             from federatedscope.llm.dataloader.dataloader import LLMDataCollator
-            
+
             data_type = getattr(self.config.data, 'type', '').lower()
             # Check if VPL model for conditional generation
             use_variational_generation = getattr(self.config.llm, 'rlhf_use_variational_generation', False)
             is_vpl_model = False
-            
+
             if use_variational_generation:
                 # Check if selector checkpoint has VPL components
                 selector_ckpt_path = getattr(self.config.llm, 'rlhf_selector_checkpoint', None)
                 if selector_ckpt_path is None:
                     selector_ckpt_path = getattr(self.config.llm, 'selector_save_to', None)
-                
+
                 if selector_ckpt_path and os.path.exists(selector_ckpt_path):
                     try:
                         from federatedscope.llm.rlhf.load_vpl_components import load_vpl_components_from_checkpoint
@@ -1487,18 +1487,18 @@ class RLHF_finetuning:
                             is_vpl_model = True
                     except Exception:
                         pass
-            
+
             # Check if this is an unseen experiment (needs client-specific test data)
             unseen_clients_id = []
             if self.selector_cfg is not None:
                 unseen_clients_id = getattr(self.selector_cfg.federate, 'unseen_clients_id', [])
             if len(unseen_clients_id) == 0:
                 unseen_clients_id = getattr(self.config.federate, 'unseen_clients_id', [])
-            
+
             is_unseen_experiment = len(unseen_clients_id) > 0
             num_clients = self.num_clients
             max_num_test = getattr(self.config.eval, 'max_samples_for_reward', 30)
-            
+
             if 'ultrafeedback' in data_type:
                 # Load test prompts from UltraFeedback dataset
                 from federatedscope.llm.dataloader.ultrafeedback import load_ultrafeedback_for_rlhf
@@ -1583,7 +1583,7 @@ class RLHF_finetuning:
                         list_test_dict = []
                     else:
                         list_test_dict = [{'prompt': p['prompt'], 'output': ''} for p in list_test_prompts if p.get('prompt')]
-                    
+
                     # Assign client_id for VPL models (for conditional
                     # generation) - balanced across preference categories
                     # so the per-metric GPT-API eval filter does not
@@ -1601,7 +1601,7 @@ class RLHF_finetuning:
                                    f"(of {num_clients} clients, balanced round-robin) for VPL conditional generation")
                     else:
                         logger.info(f"Loaded {len(list_test_dict)} test prompts (standard generation, no client_id)")
-            
+
             # Create LLMDataset with prompts only (no output_tag needed for test evaluation)
             if list_test_dict and len(list_test_dict) > 0:
                 test_dataset = LLMDataset(
@@ -1610,10 +1610,10 @@ class RLHF_finetuning:
                     prompt_input=self.generation_prompt,
                     prompt_no_input=self.generation_prompt,
                 )
-                
+
                 # Use LLMDataCollator for test data (not LLMRewardCollator)
                 test_data_collator = LLMDataCollator(tokenizer=self.tokenizer)
-                
+
                 test_dataloader = DataLoader(
                     test_dataset,
                     batch_size=self.config.dataloader.batch_size,
@@ -1622,7 +1622,7 @@ class RLHF_finetuning:
                     collate_fn=test_data_collator,
                     pin_memory=self.config.dataloader.pin_memory,
                 )
-                
+
                 # Update data dict with test loader
                 data['test'] = test_dataloader
                 # Update trainer's data
@@ -1635,12 +1635,12 @@ class RLHF_finetuning:
             logger.error(f"Failed to load test data: {e}. Test evaluation will be skipped.")
             import traceback
             logger.error(traceback.format_exc())
-        
+
         # Initialize z values storage for visualization
         z_values_list = []
         z_mu_list = []
         z_logvar_list = []
-        
+
         # Visualize client-specific average z values at the start of training (before any training)
         # This shows the initial z distribution from the selector checkpoint
         if self.client_average_z_dict is not None and len(self.client_average_z_dict) > 0:
@@ -1648,14 +1648,14 @@ class RLHF_finetuning:
                 from federatedscope.llm.llm_local.z_visualization import visualize_cross_client_z
                 import numpy as np
                 # torch and os are already imported at the top of the file
-                
+
                 logger.info("Visualizing client-specific average z values at the start of RL training...")
-                
+
                 # Prepare z values and client labels for visualization
                 client_avg_z_list = []
                 client_labels_list = []
                 orthogonal_labels_list = []
-                
+
                 for client_id, z_mu in self.client_average_z_dict.items():
                     if isinstance(z_mu, torch.Tensor):
                         z_np = z_mu.cpu().numpy()
@@ -1663,7 +1663,7 @@ class RLHF_finetuning:
                         z_np = np.array(z_mu)
                     client_avg_z_list.append(z_np)
                     client_labels_list.append(client_id)
-                    
+
                     # Assign orthogonal label based on client_id
                     # using the same category map as MetaSplitter
                     from federatedscope.llm.llm_local.server import VPLGPServer
@@ -1675,14 +1675,14 @@ class RLHF_finetuning:
                         self.num_clients, num_cats, cpc)
                     orthogonal_labels_list.append(
                         cat_map.get(client_id, 0))
-                
+
                 if len(client_avg_z_list) > 0:
                     z_array = np.array(client_avg_z_list)
-                    
+
                     # Visualize
                     output_dir = self.config.outdir
                     wandb_project = getattr(self.config.wandb, 'name_project', None)
-                    
+
                     visualize_cross_client_z(
                         z_values=z_array,
                         client_labels=client_labels_list,
@@ -1693,7 +1693,7 @@ class RLHF_finetuning:
                         wandb_project=wandb_project
                     )
                     logger.info(f"Visualized {len(client_avg_z_list)} client-specific average z values at the start of training")
-                    
+
                     # Log to WandB
                     if self.config.wandb.use and self.config.wandb.online_track:
                         try:
@@ -1710,7 +1710,7 @@ class RLHF_finetuning:
                             logger.warning(f"Failed to log client average z visualization to WandB: {e}")
             except Exception as e:
                 logger.warning(f"Failed to visualize client average z values at start: {e}")
-        
+
         # start training
         for r in range(self.config.federate.total_round_num):
             logger.info("----------- Starting a new RLHF training round "
@@ -1721,10 +1721,10 @@ class RLHF_finetuning:
                                                           role="Server",
                                                           return_raw=True)
             logger.info(train_log_res)
-            
+
             # Keep all train results (don't filter - we want all metrics in WandB)
             # Note: We'll log all metrics directly to WandB, so no need to filter
-            
+
             # Save train results to WandB with explicit step
             # For RL training: only log loss-related metrics, exclude winrate and reward model scores
             if self.config.wandb.use and self.config.wandb.online_track:
@@ -1737,8 +1737,8 @@ class RLHF_finetuning:
                         # Filter out winrate and reward model scores for train metrics (RL training)
                         # Only keep loss-related metrics: loss, avg_loss, acc, total
                         train_metrics_to_exclude = [
-                            'train_helpfulness_winrate', 'train_harmlessness_winrate', 
-                            'train_avg_winlose_rate', 'train_avg_helpfulness', 
+                            'train_helpfulness_winrate', 'train_harmlessness_winrate',
+                            'train_avg_winlose_rate', 'train_avg_helpfulness',
                             'train_avg_harmlessness'
                         ]
                         # Log only loss-related metrics with proper naming: "Server, metric_name"
@@ -1752,10 +1752,10 @@ class RLHF_finetuning:
                                 # Handle list/tuple values (take first element or mean)
                                 if isinstance(value[0], (int, float)):
                                     wandb_metrics[f"Server, {key}"] = float(sum(value) / len(value))
-                    
+
                     # Also log Round for reference
                     wandb_metrics["Server, Round"] = r
-                    
+
                     # Log to WandB with explicit step
                     if wandb_metrics:
                         wandb.log(wandb_metrics, step=r)
@@ -1766,9 +1766,9 @@ class RLHF_finetuning:
                     logger.warning(f"Failed to log train metrics to WandB: {e}")
                     # Fallback to original method
                     self._monitor.save_formatted_results(train_log_res, save_file_name="")
-            
+
             # Collect z values for visualization (if variational generation is enabled)
-            if (hasattr(self.trainer, 'use_variational_generation') and 
+            if (hasattr(self.trainer, 'use_variational_generation') and
                 self.trainer.use_variational_generation and
                 hasattr(self.trainer, 'variational_encoder') and
                 self.trainer.variational_encoder is not None):
@@ -1786,13 +1786,13 @@ class RLHF_finetuning:
                                 self.trainer.clear_collected_z_values()
                 except Exception as e:
                     logger.debug(f"Could not collect z values in round {r}: {e}")
-            
+
             # Evaluate on test split if available
             # Check both data dict and trainer's data dict, and client_test_data for unseen experiments
             test_available = (data.get('test') is not None) or (hasattr(self.trainer, 'data') and self.trainer.data.get('test') is not None) or (hasattr(self, 'client_test_data') and self.client_test_data is not None and len(self.client_test_data) > 0)
             if test_available and (r + 1) % self.config.eval.freq == 0:
                 logger.info("----------- Evaluating on test split -------------")
-                
+
                 # Final round: reload full test dataset for evaluation (no max_samples limit)
                 is_final_round = (r + 1 == self.config.federate.total_round_num)
                 data_type_final = getattr(self.config.data, 'type', '').lower()
@@ -1898,7 +1898,7 @@ class RLHF_finetuning:
                         logger.warning(f"Failed to reload full test data for final round: {e}. Using existing test loader.")
                         import traceback
                         logger.debug(traceback.format_exc())
-                
+
                 # Check if this is an unseen experiment (has unseen_clients_id in config)
                 # Try to get from selector_cfg first (for VPL models), then from main config (for FedDPO)
                 unseen_clients_id = []
@@ -1907,17 +1907,17 @@ class RLHF_finetuning:
                 # Fallback to main config if selector_cfg is None (e.g., FedDPO)
                 if len(unseen_clients_id) == 0:
                     unseen_clients_id = getattr(self.config.federate, 'unseen_clients_id', [])
-                
+
                 # If we have client-specific test data and unseen_clients_id, evaluate separately
                 if hasattr(self, 'client_test_data') and self.client_test_data is not None and len(unseen_clients_id) > 0:
                     # Evaluate separately for seen and unseen clients
                     seen_client_ids = [cid for cid in range(1, self.num_clients + 1) if cid not in unseen_clients_id]
                     unseen_client_ids = unseen_clients_id
-                    
+
                     logger.info(f"Unseen experiment detected. Evaluating separately:")
                     logger.info(f"  Seen clients: {seen_client_ids}")
                     logger.info(f"  Unseen clients: {unseen_client_ids}")
-                    
+
                     # Evaluate seen clients
                     # Limit to max_samples_for_reward per client type (not per client)
                     max_eval_samples = getattr(self.config.eval, 'max_samples_for_reward', 30)
@@ -1938,9 +1938,9 @@ class RLHF_finetuning:
                                     break
                         if seen_samples_count >= max_eval_samples:
                             break
-                    
+
                     logger.info(f"Prepared {len(seen_test_dict)} seen test samples (limited to {max_eval_samples})")
-                    
+
                     # Evaluate unseen clients
                     unseen_test_dict = []
                     unseen_samples_count = 0
@@ -1959,9 +1959,9 @@ class RLHF_finetuning:
                                     break
                         if unseen_samples_count >= max_eval_samples:
                             break
-                    
+
                     logger.info(f"Prepared {len(unseen_test_dict)} unseen test samples (limited to {max_eval_samples})")
-                    
+
                     # Evaluate seen clients
                     seen_results = None
                     if len(seen_test_dict) > 0:
@@ -1985,7 +1985,7 @@ class RLHF_finetuning:
                         seen_results = self.trainer.evaluate(target_data_split_name="test")
                         if seen_results is None:
                             seen_results = getattr(self.trainer.ctx, 'eval_metrics', {})
-                    
+
                     # Evaluate unseen clients
                     unseen_results = None
                     if len(unseen_test_dict) > 0:
@@ -2009,11 +2009,11 @@ class RLHF_finetuning:
                         unseen_results = self.trainer.evaluate(target_data_split_name="test")
                         if unseen_results is None:
                             unseen_results = getattr(self.trainer.ctx, 'eval_metrics', {})
-                    
+
                     # Format and log results separately
                     seen_log_res = None
                     unseen_log_res = None
-                    
+
                     if seen_results:
                         seen_log_res = self._monitor.format_eval_res(seen_results, rnd=r, role="Server (Seen)", return_raw=True)
                         logger.info(f"Round {r}: Seen clients ({len(seen_client_ids)} clients) test evaluation results:")
@@ -2025,7 +2025,7 @@ class RLHF_finetuning:
                                     if isinstance(value[0], (int, float)):
                                         avg_value = float(sum(value) / len(value))
                                         logger.info(f"  Seen_{key}: {avg_value:.4f} (from {len(value)} samples)")
-                    
+
                     if unseen_results:
                         unseen_log_res = self._monitor.format_eval_res(unseen_results, rnd=r, role="Server (Unseen)", return_raw=True)
                         logger.info(f"Round {r}: Unseen clients ({len(unseen_client_ids)} clients) test evaluation results:")
@@ -2037,13 +2037,13 @@ class RLHF_finetuning:
                                     if isinstance(value[0], (int, float)):
                                         avg_value = float(sum(value) / len(value))
                                         logger.info(f"  Unseen_{key}: {avg_value:.4f} (from {len(value)} samples)")
-                    
+
                     # Log to WandB separately
                     if (seen_log_res or unseen_log_res) and self.config.wandb.use and self.config.wandb.online_track:
                         try:
                             import wandb
                             wandb_metrics = {}
-                            
+
                             # Log seen clients with BOTH formats:
                             # 1. Standard format (for compatibility with existing plots): "Server, {key}"
                             # 2. Seen-specific format: "Server_Seen, {key}"
@@ -2061,7 +2061,7 @@ class RLHF_finetuning:
                                             wandb_metrics[f"Server, {key}"] = avg_value
                                             # Seen-specific format
                                             wandb_metrics[f"Server_Seen, {key}"] = avg_value
-                            
+
                             # Log unseen clients with Unseen-specific format: "Server_Unseen, {key}"
                             if unseen_log_res and 'Results_raw' in unseen_log_res:
                                 for key, value in unseen_log_res['Results_raw'].items():
@@ -2070,9 +2070,9 @@ class RLHF_finetuning:
                                     elif isinstance(value, (list, tuple)) and len(value) > 0:
                                         if isinstance(value[0], (int, float)):
                                             wandb_metrics[f"Server_Unseen, {key}"] = float(sum(value) / len(value))
-                            
+
                             wandb_metrics["Server, Round"] = r
-                            
+
                             if wandb_metrics:
                                 wandb.log(wandb_metrics, step=r)
                                 logger.info(f"Round {r}: Logged seen/unseen test metrics to WandB")
@@ -2080,7 +2080,7 @@ class RLHF_finetuning:
                                 logger.info(f"  - Unseen clients: Unseen format (Server_Unseen, {{key}})")
                         except Exception as e:
                             logger.warning(f"Failed to log seen/unseen test metrics to WandB: {e}")
-                    
+
                     # Restore original test loader for compatibility
                     if 'test' in data:
                         self.trainer.ctx.test_loader = data['test']
@@ -2093,12 +2093,12 @@ class RLHF_finetuning:
                         self.trainer.ctx.test_loader = self.trainer.data['test']
                     elif 'test' in data:
                         self.trainer.ctx.test_loader = data['test']
-                    
+
                     test_results = self.trainer.evaluate(target_data_split_name="test")
                     if test_results is None:
                         # If evaluate returns None, try to get eval_metrics from ctx
                         test_results = getattr(self.trainer.ctx, 'eval_metrics', {})
-                    
+
                     if test_results:
                         test_log_res = self._monitor.format_eval_res(test_results,
                                                                      rnd=r,
@@ -2118,7 +2118,7 @@ class RLHF_finetuning:
                     else:
                         logger.warning(f"Round {r+1}: Test evaluation returned no results.")
                         test_log_res = None
-                    
+
                     # Save test results to WandB with explicit step
                     # For RL training: log all test metrics including winrate and reward model scores
                     if test_log_res and self.config.wandb.use and self.config.wandb.online_track:
@@ -2137,10 +2137,10 @@ class RLHF_finetuning:
                                         # Handle list/tuple values (take first element or mean)
                                         if isinstance(value[0], (int, float)):
                                             wandb_metrics[f"Server, {key}"] = float(sum(value) / len(value))
-                            
+
                             # Also log Round for reference
                             wandb_metrics["Server, Round"] = r
-                            
+
                             # Log to WandB with explicit step
                             if wandb_metrics:
                                 wandb.log(wandb_metrics, step=r)
@@ -2153,34 +2153,34 @@ class RLHF_finetuning:
                             self._monitor.save_formatted_results(test_log_res, save_file_name="")
             elif (r + 1) % self.config.eval.freq == 0:
                 logger.warning(f"Round {r+1}: Test data not available for evaluation. Skipping test evaluation.")
-            
+
             # Visualize z values periodically (every 5 rounds or at the end)
-            if (len(z_values_list) > 0 and 
+            if (len(z_values_list) > 0 and
                 ((r + 1) % 5 == 0 or r == self.config.federate.total_round_num - 1)):
                 try:
                     from federatedscope.llm.llm_local.z_visualization import visualize_cross_client_z
                     import numpy as np
                     import matplotlib.pyplot as plt
-                    
+
                     # For standalone RL, we need to infer client labels from preference_type
                     # Since we have both harmlessness (client_id=1) and helpfulness (client_id=2) data
                     # We should use the actual client_id from the data if available
                     # Otherwise, infer from preference_type in collected z values
                     # For now, we'll use a simple approach: assign labels based on z distribution
                     # In practice, we should track client_id along with z values
-                    
+
                     # Convert to numpy array
                     z_array = np.array(z_values_list)
-                    
+
                     # For RL training, we have z values from both harmlessness and helpfulness clients
                     # Since we can't easily distinguish them from z alone, we'll use a single "RL" label
                     # But we should log where the file is saved
                     client_labels = [1] * len(z_values_list)  # All labeled as client 1 for now
-                    
+
                     # Visualize t-SNE
                     output_dir = self.config.outdir
                     wandb_project = getattr(self.config.wandb, 'name_project', None)
-                    
+
                     visualize_cross_client_z(
                         z_values=z_array,
                         client_labels=client_labels,
@@ -2190,7 +2190,7 @@ class RLHF_finetuning:
                         output_dir=output_dir,
                         wandb_project=wandb_project
                     )
-                    
+
                     # Log the file path
                     tsne_filename = f"cross_client_z_tsne_round_{r}.png"
                     tsne_path = os.path.join(output_dir, tsne_filename)
@@ -2200,17 +2200,17 @@ class RLHF_finetuning:
                         logger.info(f"  File exists: {os.path.getsize(tsne_path)} bytes")
                     else:
                         logger.warning(f"  File not found at expected path: {tsne_path}")
-                    
+
                     # Log z statistics to WandB
                     if self.config.wandb.use and self.config.wandb.online_track:
                         try:
                             import wandb
-                            
+
                             # Calculate statistics
                             z_mean = np.mean(z_array, axis=0)
                             z_std = np.std(z_array, axis=0)
                             z_norm = np.linalg.norm(z_array, axis=1)
-                            
+
                             # Log statistics
                             wandb_metrics = {
                                 f'z_stats/mean_norm': np.mean(z_norm),
@@ -2219,7 +2219,7 @@ class RLHF_finetuning:
                                 f'z_stats/std_dim_0': float(z_std[0]) if len(z_std) > 0 else 0.0,
                                 f'z_stats/num_values': len(z_values_list),
                             }
-                            
+
                             # Log histogram of z norms
                             fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
                             ax_hist.hist(z_norm, bins=30, alpha=0.7, edgecolor='black')
@@ -2228,16 +2228,16 @@ class RLHF_finetuning:
                             ax_hist.set_title(f'Distribution of z Norms (Round {r})', fontsize=14)
                             ax_hist.grid(True, alpha=0.3)
                             plt.tight_layout()
-                            
+
                             wandb_metrics[f'z_stats/z_norm_histogram'] = wandb.Image(fig_hist)
-                            
+
                             wandb.log(wandb_metrics, step=r)
                             plt.close(fig_hist)
-                            
+
                             logger.info(f"Round {r}: Logged z statistics to WandB")
                         except Exception as e:
                             logger.warning(f"Failed to log z statistics to WandB: {e}")
-                            
+
                 except Exception as e:
                     logger.warning(f"Failed to visualize z values in round {r}: {e}")
             # Save the checkpoint
@@ -2348,7 +2348,7 @@ class RLHF_finetuning:
             max_new_tokens=max_new_tokens,
             num_return_sequences=max(2, num_completions),
         )
-        
+
         # Ensure do_sample is True when num_return_sequences > 1
         if generate_kwargs['num_return_sequences'] > 1 and not generate_kwargs.get('do_sample', False):
             generate_kwargs['do_sample'] = True
@@ -2359,14 +2359,14 @@ class RLHF_finetuning:
         use_variational_generation = getattr(
             self.config.llm, 'rlhf_use_variational_generation', False)
         z_to_embedding = None
-        
+
         # For VPL/VPL-GP: Determine harmless and helpful client IDs from num_clients
         # Check if this is a VPL model (VPL or VPL-GP selector)
         is_vpl_selector = False
         selector_ckpt_path = getattr(self.config.llm, 'rlhf_selector_checkpoint', None)
         if selector_ckpt_path is None:
             selector_ckpt_path = getattr(self.config.llm, 'selector_save_to', None)
-        
+
         if selector_ckpt_path and os.path.exists(selector_ckpt_path):
             try:
                 ckpt = torch.load(selector_ckpt_path, map_location='cpu')
@@ -2379,7 +2379,7 @@ class RLHF_finetuning:
                         logger.info("VPL/VPL-GP selector detected. Will use client-specific z for conditional selection.")
             except Exception as e:
                 logger.warning(f"Could not check selector checkpoint for VPL components: {e}")
-        
+
         # Determine client IDs per category from num_clients (only for VPL)
         # Uses the same formula as MetaSplitter for consistency
         harmless_client_ids = []
@@ -2406,7 +2406,7 @@ class RLHF_finetuning:
                         f"client distribution: {category_client_ids}")
         else:
             logger.info("Non-VPL selector detected. Will use standard selection (no client assignment).")
-        
+
         # Still load client average z for later use in binary selection
         if self.client_average_z_dict is None:
             from federatedscope.llm.rlhf.load_vpl_components import (
@@ -2416,7 +2416,7 @@ class RLHF_finetuning:
             selector_ckpt_path = getattr(self.config.llm, 'rlhf_selector_checkpoint', None)
             if selector_ckpt_path is None:
                 selector_ckpt_path = getattr(self.config.llm, 'selector_save_to', None)
-            
+
             if selector_ckpt_path and os.path.exists(selector_ckpt_path):
                 logger.info(f"Loading z_to_embedding and client average z for generation from {selector_ckpt_path}")
                 _, _, _, z_to_embedding = load_vpl_components_from_checkpoint(
@@ -2430,7 +2430,7 @@ class RLHF_finetuning:
                     try:
                         actual_embedding_dim = self.model.get_input_embeddings().embedding_dim
                         z_to_embedding_output_dim = z_to_embedding.weight.shape[0]  # (out_features, in_features)
-                        
+
                         if z_to_embedding_output_dim != actual_embedding_dim:
                             logger.warning(f"z_to_embedding output dimension ({z_to_embedding_output_dim}) does not match "
                                          f"model embedding dimension ({actual_embedding_dim}). Reinitializing z_to_embedding.")
@@ -2453,7 +2453,7 @@ class RLHF_finetuning:
                         logger.warning("No client average z found in checkpoint. Will compute from training data.")
                         # If not in checkpoint, compute from training data
                         self._compute_client_average_z_from_training_data(selector_ckpt_path)
-        
+
         # Use stored client_average_z_dict
         client_average_z_dict = self.client_average_z_dict
 
@@ -2512,7 +2512,7 @@ class RLHF_finetuning:
         else:
             # Non-VPL: use original prompts without client assignment
             list_data_dict_for_generation = list_data_dict
-        
+
         # Get model device (handle device_map='auto' case) - needed for both VPL and non-VPL paths
         if hasattr(model, 'device'):
             model_device = model.device
@@ -2523,7 +2523,7 @@ class RLHF_finetuning:
                 model_device = next(model.parameters()).device
             except:
                 model_device = self.device
-        
+
         new_list_data_dict = []
         for input_data in get_input_data(list_data_dict_for_generation):
             # For VPL: Generate one response per category per prompt
@@ -2612,11 +2612,11 @@ class RLHF_finetuning:
                 add_special_tokens=True,
                 return_tensors="pt",
             )
-            
+
             # Move tokens to model device
-            input_text_tokens_device = {k: v.to(model_device) if isinstance(v, torch.Tensor) else v 
+            input_text_tokens_device = {k: v.to(model_device) if isinstance(v, torch.Tensor) else v
                                         for k, v in input_text_tokens.items()}
-            
+
             input_ids = input_text_tokens_device['input_ids']
             attention_mask = input_text_tokens_device['attention_mask']
 
@@ -2627,11 +2627,11 @@ class RLHF_finetuning:
                 # Priority 2: Use z from data (if already generated in previous rounds)
                 # Priority 3: Use overall average z (for standalone mode)
                 # Priority 4: Infer z from input (fallback)
-                
+
                 z = None
                 batch_size = len(input_data)
                 vpl_latent_dim = getattr(self.config.llm, 'vpl_latent_dim', 32)
-                
+
                 # Priority 1: Try to use client-specific average z
                 if client_average_z_dict is not None and len(client_average_z_dict) > 0:
                     z_list = []
@@ -2667,7 +2667,7 @@ class RLHF_finetuning:
                                 else:
                                     overall_avg_z = overall_avg_z[:vpl_latent_dim]
                             z_list.append(overall_avg_z)
-                    
+
                     if len(z_list) == batch_size:
                         # Ensure all z values are 1D before stacking
                         z_list_1d = []
@@ -2695,7 +2695,7 @@ class RLHF_finetuning:
                                 else:
                                     z = z[:, :vpl_latent_dim]
                             logger.info(f"z after force reshape: {z.shape}")
-                
+
                 # Priority 2: Try to get z from data (if already generated)
                 if z is None and 'z' in input_data[0]:
                     z_list = [data.get('z', None) for data in input_data]
@@ -2705,14 +2705,14 @@ class RLHF_finetuning:
                             for z_val in z_list
                         ]).to(self.device)
                         logger.debug(f"Using z from data: shape {z.shape}")
-                
+
                 # Priority 3: Use overall average z (if client_average_z_dict available but no client_id)
                 if z is None and client_average_z_dict is not None and len(client_average_z_dict) > 0:
                     all_z_mus = torch.stack(list(client_average_z_dict.values()))
                     overall_avg_z = all_z_mus.mean(dim=0)  # (latent_dim,)
                     z = overall_avg_z.unsqueeze(0).repeat(batch_size, 1).to(self.device)  # (batch_size, latent_dim)
                     logger.debug(f"Using overall average z for generation: shape {z.shape}")
-                
+
                 # Priority 4: Infer z from input (fallback - not recommended)
                 if z is None:
                     logger.warning("No client average z available. Inferring z from input (this is less accurate).")
@@ -2721,7 +2721,7 @@ class RLHF_finetuning:
                     variational_encoder, feature_extractor, _, _ = load_vpl_components_from_checkpoint(
                         selector_ckpt_path, self.config, device=self.device
                     )
-                    
+
                     if variational_encoder is not None and feature_extractor is not None:
                         # Ensure input_ids and attention_mask are on model device
                         input_ids = input_ids.to(model_device)
@@ -2736,7 +2736,7 @@ class RLHF_finetuning:
                         vpl_use_feature_difference = getattr(self.config.llm, 'vpl_use_feature_difference', True)
                         vpl_use_llm_feature_extractor = getattr(self.config.llm, 'vpl_use_llm_feature_extractor', True)
                         vpl_use_difference_only = getattr(self.config.llm, 'vpl_use_difference_only', False)
-                        
+
                         if vpl_use_llm_feature_extractor and vpl_use_feature_difference:
                             if vpl_use_difference_only:
                                 features = feature_extractor(pooled_embeddings)
@@ -2750,7 +2750,7 @@ class RLHF_finetuning:
                         z_mu, z_logvar = variational_encoder.encode(features)
                         z = z_mu  # Use mean during generation
                         logger.debug(f"Inferred z from input for generation: shape {z.shape}")
-                
+
                 if z is not None:
                     # Get model device (handle device_map='auto' case)
                     if hasattr(model, 'device'):
@@ -2762,10 +2762,10 @@ class RLHF_finetuning:
                             model_device = next(model.parameters()).device
                         except:
                             model_device = self.device
-                    
+
                     # Ensure z is on model device
                     z = z.to(model_device)
-                    
+
                     # Ensure z is 2D: (batch_size, latent_dim)
                     # Handle various z shapes - flatten all extra dimensions
                     original_shape = z.shape
@@ -2777,7 +2777,7 @@ class RLHF_finetuning:
                         # Add batch dimension if missing
                         z = z.unsqueeze(0)
                         logger.debug(f"Added batch dimension to z: {z.shape}")
-                    
+
                     # Ensure z has correct latent_dim
                     vpl_latent_dim = getattr(self.config.llm, 'vpl_latent_dim', 32)
                     if z.shape[-1] != vpl_latent_dim:
@@ -2789,18 +2789,18 @@ class RLHF_finetuning:
                         else:
                             # Truncate
                             z = z[:, :vpl_latent_dim]
-                    
+
                     # Project z to embedding space and inject into input embeddings
                     # CRITICAL: Ensure z is 2D: (batch_size, latent_dim) before passing to z_to_embedding
                     logger.info(f"z shape before z_to_embedding: {z.shape}, dim={z.dim()}")
-                    
+
                     # Force z to be 2D: (batch_size, latent_dim)
                     if z.dim() != 2:
                         logger.error(f"z has wrong dimension {z.dim()}, shape {z.shape}. Forcing to 2D...")
                         # Flatten all dimensions except the first (batch) dimension
                         z = z.view(z.shape[0], -1)
                         logger.info(f"z after flattening: {z.shape}")
-                    
+
                     # Ensure z has correct latent_dim
                     if z.shape[1] != vpl_latent_dim:
                         logger.error(f"z has wrong latent_dim: expected {vpl_latent_dim}, got {z.shape[1]}. Reshaping...")
@@ -2812,7 +2812,7 @@ class RLHF_finetuning:
                             # Truncate
                             z = z[:, :vpl_latent_dim]
                         logger.info(f"z after reshaping: {z.shape}")
-                    
+
                     # Now z should be (batch_size, latent_dim)
                     # Ensure z has the same dtype as z_to_embedding
                     if z.dtype != z_to_embedding.weight.dtype:
@@ -2820,16 +2820,16 @@ class RLHF_finetuning:
                         logger.debug(f"Converted z dtype from {z.dtype} to {z_to_embedding.weight.dtype}")
                     z_embedding = z_to_embedding(z)  # (batch_size, embedding_dim)
                     logger.info(f"z_embedding shape after z_to_embedding: {z_embedding.shape}, z shape: {z.shape}, z_embedding dtype: {z_embedding.dtype}")
-                    
+
                     # Ensure z_embedding is 2D: (batch_size, embedding_dim)
                     if z_embedding.dim() != 2:
                         logger.error(f"z_embedding has wrong dimension {z_embedding.dim()}, shape {z_embedding.shape}. Forcing to 2D...")
                         z_embedding = z_embedding.view(z_embedding.shape[0], -1)
                         logger.info(f"z_embedding after flattening: {z_embedding.shape}")
-                    
+
                     input_embeddings = model.get_input_embeddings()(input_ids)  # (batch_size, seq_len, embedding_dim)
                     actual_embedding_dim = input_embeddings.shape[-1]
-                    
+
                     # Verify z_embedding dimension matches input_embeddings
                     if z_embedding.shape[-1] != actual_embedding_dim:
                         logger.error(f"z_embedding dimension ({z_embedding.shape[-1]}) does not match "
@@ -2846,7 +2846,7 @@ class RLHF_finetuning:
                             eos_token_id=eos_token_id,
                             **kwargs
                         )
-                    
+
                     # Expand z_embedding to match input_embeddings shape: (batch_size, embedding_dim) -> (batch_size, seq_len, embedding_dim)
                     seq_len = input_embeddings.shape[1]
                     z_embedding = z_embedding.unsqueeze(1).expand(-1, seq_len, -1)  # (batch_size, seq_len, embedding_dim)
@@ -2858,7 +2858,7 @@ class RLHF_finetuning:
                     inputs_embeds = inputs_embeds.to(
                         device=model_device, dtype=model_dtype)
                     attention_mask = attention_mask.to(model_device)
-                    
+
                     # Use inputs_embeds instead of input_ids for generation
                     output_ids = model.generate(
                         inputs_embeds=inputs_embeds,
@@ -2921,7 +2921,7 @@ class RLHF_finetuning:
                 raise ValueError("tokenizer is None and generator_tokenizer is also None. Cannot perform selection.")
             logger.warning("tokenizer is None in _choose_better_response. Using generator_tokenizer as fallback.")
             tokenizer = self.generator_tokenizer
-        
+
         choices = [tokenizer(f": {c}")["input_ids"][-1] for c in ["A", "B"]]
         logger.info(f'Choice indices: {choices}')
 
@@ -2954,7 +2954,7 @@ class RLHF_finetuning:
                 model_device = next(model.parameters()).device
             except:
                 model_device = self.device
-        
+
         if hasattr(model, "adapter_names") is False or len(
                 model.adapter_names) == 1:
             # No adapter or only one LoRA adapter

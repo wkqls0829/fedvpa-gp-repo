@@ -33,25 +33,25 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
     if len(z_values) == 0:
         logger.warning("No z values to visualize")
         return
-    
+
     # Convert to numpy if needed
     if not isinstance(z_values, np.ndarray):
         z_values = np.array(z_values)
-    
+
     num_points = len(z_values)
     num_clients = len(set(client_labels))
-    
+
     logger.info(f"Round {round_num}: Visualizing z from {num_clients} clients "
                f"at round {round_num} ({num_points} total points, shape: {z_values.shape})")
-    
+
     # Apply t-SNE
     if num_points < 2:
         logger.warning("Not enough points for t-SNE (need at least 2)")
         return
-    
+
     # Reduce perplexity if we have few points
     perplexity = min(30, max(5, num_points - 1))
-    
+
     tsne_successful = True
     try:
         tsne = TSNE(n_components=2, random_state=42, perplexity=perplexity, n_iter=1000)
@@ -62,15 +62,15 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
         pca = PCA(n_components=2)
         z_2d = pca.fit_transform(z_values)
         tsne_successful = False
-    
+
     # Create figure with better styling
     plt.style.use('seaborn-v0_8-darkgrid' if 'seaborn-v0_8-darkgrid' in plt.style.available else 'default')
     fig, ax = plt.subplots(figsize=(14, 11))
     fig.patch.set_facecolor('white')
-    
+
     # Plot z values colored by client
     unique_clients = sorted(set(client_labels))
-    
+
     # Color palettes per category (supports up to 4+ categories).
     # Each category gets a distinct color family so clients within
     # the same category have similar hues but different shades.
@@ -131,7 +131,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
             _cat_idx_counters[orth_label] = count + 1
         else:
             client_color_map[client_id] = '#808080'
-    
+
     for client_id in unique_clients:
         mask = np.array(client_labels) == client_id
         if mask.sum() > 0:
@@ -149,13 +149,13 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                     label = f'Client {client_id} (Harmlessness)'
                 else:
                     label = f'Client {client_id} (Helpfulness)'
-            
-            ax.scatter(z_2d[mask, 0], z_2d[mask, 1], 
-                      c=[client_color_map[client_id]], 
+
+            ax.scatter(z_2d[mask, 0], z_2d[mask, 1],
+                      c=[client_color_map[client_id]],
                       label=label,
-                      alpha=0.85, s=80, edgecolors='white', linewidths=1.0, 
+                      alpha=0.85, s=80, edgecolors='white', linewidths=1.0,
                       marker='o', zorder=3)  # Enhanced styling for better visibility
-    
+
     # Project client mus into the same t-SNE space by re-fitting
     # with mus appended, so their 2D positions are comparable.
     if client_mus is not None and len(client_mus) > 0:
@@ -194,7 +194,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                               alpha=0.8))
         except Exception as e:
             logger.warning(f"Failed to project client mus: {e}")
-    
+
     ax.set_xlabel('t-SNE Dimension 1', fontsize=14, fontweight='bold')
     ax.set_ylabel('t-SNE Dimension 2', fontsize=14, fontweight='bold')
     if round_num < 0:
@@ -207,13 +207,13 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
             helpful_count = sum(1 for l in orthogonal_labels if l == 1)
             title += f'\n({harmless_count} Harmlessness, {helpful_count} Helpfulness clients)'
     ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
-    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=9, 
+    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=9,
               framealpha=0.9, fancybox=True, shadow=True)
     ax.grid(True, alpha=0.4, linestyle='--', linewidth=0.5)
     ax.set_facecolor('#FAFAFA')  # Light gray background for better contrast
-    
+
     plt.tight_layout()
-    
+
     # Save plot
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
@@ -226,7 +226,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
             z_data_path = os.path.join(output_dir, f'cross_client_z_tsne_round_{round_num}.json')
         plt.savefig(save_path, dpi=200, bbox_inches='tight', facecolor='white', edgecolor='none')
         logger.info(f"Saved cross-client z visualization to {save_path}")
-        
+
         # Save z values to JSON file for later analysis
         try:
             # Helper function to safely convert to list
@@ -239,7 +239,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                     return arr
                 else:
                     return list(arr)
-            
+
             z_data = {
                 'z_values': to_list_safe(z_values),  # Convert numpy array to list
                 'z_values_2d': to_list_safe(z_2d),  # Save 2D t-SNE coordinates
@@ -254,7 +254,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                     'tsne_successful': tsne_successful
                 }
             }
-            
+
             # Add orthogonal prototypes if available
             if orthogonal_prototypes is not None:
                 z_data['orthogonal_prototypes'] = to_list_safe(orthogonal_prototypes)
@@ -265,10 +265,10 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                     int(cid): to_list_safe(mu)
                     for cid, mu in client_mus.items()
                 }
-            
+
             # Ensure output directory exists
             os.makedirs(output_dir, exist_ok=True)
-            
+
             with open(z_data_path, 'w') as f:
                 json.dump(z_data, f, indent=2)
             logger.info(f"Saved z values data to {z_data_path} ({num_points} points, {num_clients} clients)")
@@ -276,12 +276,12 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
             logger.error(f"Failed to save z values to JSON: {e}")
             import traceback
             logger.error(traceback.format_exc())
-    
+
     # Log to WandB if available with enhanced visualization
     if wandb_project:
         try:
             import wandb
-            
+
             # Calculate statistics for each client
             client_stats = []
             for client_id in unique_clients:
@@ -289,13 +289,13 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                 if mask.sum() > 0:
                     client_z_2d = z_2d[mask]
                     client_z_original = z_values[mask]
-                    
+
                     # Calculate statistics
                     mean_x = float(np.mean(client_z_2d[:, 0]))
                     mean_y = float(np.mean(client_z_2d[:, 1]))
                     std_x = float(np.std(client_z_2d[:, 0]))
                     std_y = float(np.std(client_z_2d[:, 1]))
-                    
+
                     # Get orthogonal label
                     if orthogonal_labels is not None and len(orthogonal_labels) == len(client_labels):
                         orth_label = orthogonal_labels[np.where(mask)[0][0]]
@@ -304,7 +304,7 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                         max_client_id = max(unique_clients) if unique_clients else 0
                         split_point = max_client_id // 2 if max_client_id > 0 else 0
                         orth_type = "Harmlessness" if client_id <= split_point else "Helpfulness"
-                    
+
                     client_stats.append({
                         "Client ID": int(client_id),
                         "Type": orth_type,
@@ -315,36 +315,36 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                         "Std Y": round(std_y, 4),
                         "Color": client_color_map[client_id]
                     })
-            
+
             # Create WandB Table
             table_columns = ["Client ID", "Type", "Num Points", "Mean X", "Mean Y", "Std X", "Std Y", "Color"]
             table_data = [[row[col] for col in table_columns] for row in client_stats]
             table = wandb.Table(columns=table_columns, data=table_data)
-            
+
             # Calculate separation metrics
             harmless_mask = np.array([l == 0 for l in orthogonal_labels]) if orthogonal_labels is not None else np.array([cid <= max(unique_clients) // 2 for cid in client_labels])
             helpful_mask = np.array([l == 1 for l in orthogonal_labels]) if orthogonal_labels is not None else np.array([cid > max(unique_clients) // 2 for cid in client_labels])
-            
+
             separation_metrics = {}
             if harmless_mask.sum() > 0 and helpful_mask.sum() > 0:
                 harmless_center = np.mean(z_2d[harmless_mask], axis=0)
                 helpful_center = np.mean(z_2d[helpful_mask], axis=0)
                 separation_distance = float(np.linalg.norm(harmless_center - helpful_center))
-                
+
                 harmless_std = float(np.mean(np.std(z_2d[harmless_mask], axis=0)))
                 helpful_std = float(np.mean(np.std(z_2d[helpful_mask], axis=0)))
                 avg_std = (harmless_std + helpful_std) / 2
-                
+
                 # Separation ratio (higher is better)
                 separation_ratio = separation_distance / (avg_std + 1e-8) if avg_std > 0 else 0
-                
+
                 separation_metrics = {
                     "z_separation/distance": separation_distance,
                     "z_separation/ratio": separation_ratio,
                     "z_separation/harmless_std": harmless_std,
                     "z_separation/helpful_std": helpful_std
                 }
-            
+
             # Enhanced logging with multiple visualizations
             log_dict = {
                 f'z_visualization/t-SNE_round_{round_num}': wandb.Image(fig),
@@ -353,10 +353,10 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
                 f'z_visualization/num_points': num_points,
                 f'z_visualization/latent_dim': z_values.shape[1] if len(z_values.shape) > 1 else z_values.shape[0]
             }
-            
+
             # Add separation metrics
             log_dict.update(separation_metrics)
-            
+
             # Log to WandB
             wandb.log(log_dict, step=round_num)
             logger.info(f"Logged enhanced cross-client z visualization to wandb at round {round_num} "
@@ -365,15 +365,15 @@ def visualize_cross_client_z(z_values, client_labels, orthogonal_labels=None,
             logger.warning("wandb not installed, skipping visualization logging")
         except Exception as e:
             logger.warning(f"Failed to log visualization to wandb: {e}")
-    
+
     plt.close(fig)
 
 
-def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_name2, 
+def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_name2,
                             output_path=None):
     """
     Compare two algorithms by loading their t-SNE results and plotting side by side.
-    
+
     Args:
         json_path1: Path to first algorithm's JSON file (round 30)
         json_path2: Path to second algorithm's JSON file (round 30)
@@ -386,25 +386,25 @@ def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_n
         data1 = json.load(f)
     with open(json_path2, 'r') as f:
         data2 = json.load(f)
-    
+
     # Extract data
     z_values_2d_1 = np.array(data1['z_values_2d'])
     client_labels_1 = np.array(data1['client_labels'])
     orthogonal_labels_1 = np.array(data1['orthogonal_labels']) if data1.get('orthogonal_labels') is not None else None
-    
+
     z_values_2d_2 = np.array(data2['z_values_2d'])
     client_labels_2 = np.array(data2['client_labels'])
     orthogonal_labels_2 = np.array(data2['orthogonal_labels']) if data2.get('orthogonal_labels') is not None else None
-    
+
     # Create figure with two subplots side by side
     plt.style.use('seaborn-v0_8-darkgrid' if 'seaborn-v0_8-darkgrid' in plt.style.available else 'default')
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 9))
     fig.patch.set_facecolor('white')
-    
+
     # Helper function to plot on an axis
     def plot_tsne_on_axis(ax, z_2d, client_labels, orthogonal_labels, algorithm_name):
         unique_clients = sorted(set(client_labels))
-        
+
         # Color mapping based on orthogonal labels
         client_color_map = {}
         if orthogonal_labels is not None and len(orthogonal_labels) == len(client_labels):
@@ -427,7 +427,7 @@ def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_n
                     client_color_map[client_id] = '#DC143C'  # Crimson red
                 else:
                     client_color_map[client_id] = '#00BFFF'  # Deep sky blue
-        
+
         # Plot each client
         for client_id in unique_clients:
             mask = np.array(client_labels) == client_id
@@ -448,13 +448,13 @@ def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_n
                         label = f'Client {client_id} (Harmlessness)' if client_id <= 2 else None
                     else:
                         label = f'Client {client_id} (Helpfulness)' if client_id <= 2 else None
-                
+
                 ax.scatter(z_2d[mask, 0], z_2d[mask, 1],
                           c=[client_color_map[client_id]],
                           label=label,
                           alpha=0.85, s=80, edgecolors='white', linewidths=1.0,
                           marker='o', zorder=3)
-        
+
         ax.set_xlabel('t-SNE Dimension 1', fontsize=14, fontweight='bold')
         ax.set_ylabel('t-SNE Dimension 2', fontsize=14, fontweight='bold')
         ax.set_title(algorithm_name, fontsize=18, fontweight='bold', pad=15)
@@ -462,17 +462,17 @@ def compare_algorithms_tsne(json_path1, json_path2, algorithm_name1, algorithm_n
                   framealpha=0.9, fancybox=True, shadow=True)
         ax.grid(True, alpha=0.4, linestyle='--', linewidth=0.5)
         ax.set_facecolor('#FAFAFA')
-    
+
     # Plot both algorithms
     plot_tsne_on_axis(ax1, z_values_2d_1, client_labels_1, orthogonal_labels_1, algorithm_name1)
     plot_tsne_on_axis(ax2, z_values_2d_2, client_labels_2, orthogonal_labels_2, algorithm_name2)
-    
+
     plt.tight_layout()
-    
+
     # Save plot
     if output_path:
         os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
         plt.savefig(output_path, dpi=200, bbox_inches='tight', facecolor='white', edgecolor='none')
         logger.info(f"Saved comparison plot to {output_path}")
-    
+
     plt.close(fig)

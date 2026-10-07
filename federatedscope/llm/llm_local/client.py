@@ -131,24 +131,24 @@ class LLMMultiLoRAClient(Client):
                                 target_data_split_name='val')
                             logger.info(
                                 f'Adapter {i} with the results: {metrics}')
-                            
+
                             # Check if metrics is None before accessing
                             if metrics is None:
                                 logger.warning(f"Client {self.ID}: metrics is None for adapter {i}, adding to indices anyway")
                                 adapter_indices.append(i)
                                 continue
-                            
+
                             if i == 0 or min_loss > metrics['val_avg_loss']:
                                 min_loss, adapter_indices = metrics[
                                     'val_avg_loss'], [i]
                             elif min_loss == metrics['val_avg_loss']:
                                 adapter_indices.append(i)
-                        
+
                         # If no adapters were evaluated successfully, use all adapters
                         if len(adapter_indices) == 0:
                             logger.warning(f"Client {self.ID}: No adapters evaluated successfully, using all adapters")
                             adapter_indices = list(range(self._cfg.llm.adapter.count))
-                        
+
                         logger.info(f"Client {self.ID}: Selected adapter indices: {adapter_indices}")
                         adapter_idx = random.choice(adapter_indices)
                 # activate the selected adapter for further training
@@ -171,7 +171,7 @@ class LLMMultiLoRAClient(Client):
                     for key, value in model_para_all.items()
                     if f'Adapter_{adapter_idx}.' in key
                 }
-            
+
             # VPL: Always send z distribution and values — they're
             # needed for the per-client average-z checkpoint, not just
             # t-SNE visualization.  Previously this was gated by
@@ -182,9 +182,9 @@ class LLMMultiLoRAClient(Client):
                 z_values = self.trainer.get_client_z_values()
                 if z_values is not None:
                     model_para_all['client_z_values'] = z_values.cpu() if isinstance(z_values, torch.Tensor) else z_values
-            
+
             # VPL-GP: Add z distribution for GP prior (only if GP prior is enabled)
-            if (hasattr(self._cfg.llm, 'vpl_use_gp_prior') and 
+            if (hasattr(self._cfg.llm, 'vpl_use_gp_prior') and
                 self._cfg.llm.vpl_use_gp_prior and
                 hasattr(self.trainer, 'get_client_z_distribution')):
                 z_dist = self.trainer.get_client_z_distribution()
@@ -193,13 +193,13 @@ class LLMMultiLoRAClient(Client):
                     model_para_all['client_z_mu'] = mu.cpu() if isinstance(mu, torch.Tensor) else mu
                     model_para_all['client_z_logvar'] = logvar.cpu() if isinstance(logvar, torch.Tensor) else logvar
                     model_para_all['sample_size'] = sample_size
-            
+
             # Add orthogonal prototypes (if available)
             if hasattr(self.trainer, 'get_client_orthogonal_prototypes'):
                 prototypes = self.trainer.get_client_orthogonal_prototypes()
                 if prototypes is not None:
                     model_para_all['client_orthogonal_prototypes'] = prototypes.cpu() if isinstance(prototypes, torch.Tensor) else prototypes
-            
+
             # VPL: Add VPL components (variational_encoder, feature_extractor, latent_projection, z_to_embedding) to model parameters
             if hasattr(self.trainer, 'variational_encoder') and self.trainer.variational_encoder is not None:
                 vpl_state_dict = {}
@@ -233,7 +233,7 @@ class LLMMultiLoRAClient(Client):
                 for component_name, component_state_dict in vpl_state_dict.items():
                     for key, value in component_state_dict.items():
                         model_para_all[f'{component_name}.{key}'] = value.cpu() if isinstance(value, torch.Tensor) else value
-            
+
             train_log_res = self._monitor.format_eval_res(
                 results,
                 rnd=self.state,
@@ -289,7 +289,7 @@ class LLMMultiLoRAClient(Client):
 
     def callback_funcs_for_setting_adapter_idx(self, message: Message):
         self.adapter_idx = message.content
-    
+
     def callback_funcs_for_vpl_gp_prior(self, message: Message):
         """
         Handle VPL-GP prior update from server.
@@ -298,7 +298,7 @@ class LLMMultiLoRAClient(Client):
             prior_mus = message.content.get('vpl_gp_prior_mus')
             prior_logvars = message.content.get('vpl_gp_prior_logvars')
             prior_weights = message.content.get('vpl_gp_prior_weights')
-            
+
             if prior_mus is not None and prior_logvars is not None:
                 # Convert to tensors if needed
                 if not isinstance(prior_mus, torch.Tensor):
@@ -307,14 +307,14 @@ class LLMMultiLoRAClient(Client):
                     prior_logvars = torch.tensor(prior_logvars, dtype=torch.float32).to(self.device)
                 if not isinstance(prior_weights, torch.Tensor):
                     prior_weights = torch.tensor(prior_weights, dtype=torch.float32).to(self.device)
-                
+
                 self.trainer.update_prior_from_server(
                     prior_mus, prior_logvars, prior_weights,
                     current_round=message.state
                 )
                 logger.info(f"Client {self.ID} updated VPL-GP prior from server with "
                           f"{len(prior_mus)} client distributions at round {message.state}")
-    
+
     def callback_funcs_for_vpl_orthogonal_labels(self, message: Message):
         """
         Handle orthogonal labels and aggregated prototypes from server.

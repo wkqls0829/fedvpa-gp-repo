@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class VPLRewardChoiceTrainer(RewardChoiceTrainer):
     """
     Variational Preference Learning trainer for binary choice tasks.
-    
+
     Extends RewardChoiceTrainer with variational inference over user-specific
     latents. The model learns to:
     1. Infer user-specific latent z from preference data
@@ -43,7 +43,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                  only_for_eval=False,
                  monitor=None):
         super().__init__(model, data, device, config, only_for_eval, monitor)
-        
+
         # VPL hyperparameters
         self.vpl_latent_dim = getattr(config.llm, 'vpl_latent_dim', 32)
         self.vpl_kl_weight = getattr(config.llm, 'vpl_kl_weight', 0.1)
@@ -107,12 +107,12 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         self.vpl_gp_tau_start = getattr(config.llm, 'vpl_gp_tau_start', self.vpl_gp_temperature)
         self.vpl_gp_tau_end = getattr(config.llm, 'vpl_gp_tau_end', 0.1)
         self.total_round_num = getattr(config.federate, 'total_round_num', 30)
-        
+
         # Orthogonal loss hyperparameters (CLOP-based)
         self.vpl_orthogonal_weight = getattr(config.llm, 'vpl_orthogonal_weight', 0.0)
         self.vpl_orthogonal_orthonorm_weight = getattr(config.llm, 'vpl_orthogonal_orthonorm_weight', 0.1)
         self.vpl_use_manual_orthogonal_labels = getattr(config.llm, 'vpl_use_manual_orthogonal_labels', False)
-        
+
         # Initialize orthonormal prototypes if orthogonal loss is enabled
         # Prototypes are LEARNABLE nn.Parameters (CLOP standard)
         # Orthonormality is maintained via the orthonorm constraint loss
@@ -153,7 +153,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         else:
             self.orthogonal_prototypes = None
             self.orthogonal_label = None
-        
+
         # Get model dimensions
         # Try multiple methods to get embedding dimension
         embedding_dim = None
@@ -187,11 +187,11 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
             else:
                 embedding_dim = 2048  # Generic fallback
             logger.info(f"Using inferred embedding_dim={embedding_dim} for model type: {model_type}")
-        
+
         if embedding_dim is None:
             embedding_dim = 2048  # Final fallback
             logger.warning(f"Could not determine embedding_dim, using default: {embedding_dim}")
-        
+
         # Initialize feature extractor
         # Strategy: Siamese-style — apply MLP to each response separately,
         # then take difference.  This lets the MLP learn non-linear
@@ -240,10 +240,10 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                 nn.Linear(256, 128)
             ).to(device)
             feature_extractor_output_dim = 128
-        
+
         # Store output dimension
         self.feature_extractor_output_dim = feature_extractor_output_dim
-        
+
         # Initialize variational encoder with deeper layers
         # Use VariationalEncoderGP if GP prior is enabled, otherwise use standard VariationalEncoder
         # Get max_logvar to limit variance (sigma) - smaller values = tighter distribution
@@ -272,7 +272,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                 hidden_dims=[512, 256, 128],
                 max_logvar=vpl_max_logvar
             ).to(device)
-        
+
         # Latent conditioning: project latent z to logit adjustments
         if self.vpl_deep_projection:
             # Deep MLP: gives z more expressive power over predictions
@@ -346,11 +346,11 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
             self.z_history = []
             self.z_mu_history = []
             self.z_logvar_history = []
-            
+
             # Client z distribution (average over batches)
             self.client_z_mu = None
             self.client_z_logvar = None
-        
+
         logger.info(f'VPLRewardChoiceTrainer initialized with latent_dim={self.vpl_latent_dim}, '
                    f'kl_weight={self.vpl_kl_weight}, '
                    f'use_feature_difference={self.vpl_use_feature_difference}, '
@@ -370,7 +370,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         self.z_history = []
         self._posterior_mu_history = []
         self._posterior_logvar_history = []
-        
+
         # Freeze base model (LLM) for binary selector training
         # This prevents base model from being updated during VPL training
         # Only VPL components (feature_extractor, variational_encoder, latent_projection) will be trained
@@ -386,12 +386,12 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                            "Only VPL components will be trained.")
             else:
                 logger.warning("Model not available yet for freezing. Will freeze later if needed.")
-        
+
         # Create separate optimizer for VPL components (feature_extractor + variational_encoder + latent_projection)
         # This allows VPL components to learn faster while LLM is frozen or learns slowly
         if ctx.cur_mode in [MODE.TRAIN, MODE.FINETUNE]:
             vpl_lr_multiplier = getattr(ctx.cfg.llm, 'vpl_lr_multiplier', 10.0)  # Default: 10x faster learning
-            
+
             # Collect VPL component parameters
             vpl_params = []
             if hasattr(self, 'feature_extractor'):
@@ -477,7 +477,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         else:
             # Fallback to original logits-based extraction
             return self._extract_logits_features(logits, labels, choices)
-    
+
     @staticmethod
     def _find_subsequence(seq, subseq):
         """Return the start index of *subseq* in *seq*, or -1."""
@@ -601,33 +601,33 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                 features = feature_diff
 
         return features
-    
+
     def _extract_logits_features(self, logits, labels, choices):
         """
         Extract features from logits (original method).
-        
+
         Args:
             logits: Model logits (batch, seq_len, vocab_size)
             labels: Labels (batch, seq_len)
             choices: Choice token indices
-            
+
         Returns:
             features: Extracted features (batch, len(choices) * 2)
         """
         # Get logits at choice positions
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
-        
+
         batch_size = logits.shape[0]
-        
+
         # Extract logits for each choice token
         choice_logits_per_token = shift_logits[..., choices]  # (batch, seq_len, len(choices))
-        
+
         # Find positions where each choice appears
         features_list = []
         for choice_idx, choice_token in enumerate(choices):
             choice_positions = (shift_labels == choice_token)  # (batch, seq_len)
-            
+
             if choice_positions.any():
                 batch_features = []
                 for b in range(batch_size):
@@ -641,13 +641,13 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                 features_list.append(torch.stack(batch_features))
             else:
                 features_list.append(choice_logits_per_token[:, :, choice_idx].mean(dim=1))
-        
+
         features = torch.stack(features_list, dim=1)  # (batch, len(choices))
         features = torch.cat([features, features], dim=1)  # (batch, len(choices) * 2)
-        
+
         if features.dtype != torch.float32:
             features = features.float()
-        
+
         return features
 
     def _hook_on_batch_forward(self, ctx):
@@ -883,16 +883,16 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         reconstruction_loss = self._ce_loss_fn(
             conditioned_logits.view(-1, num_choices),
             new_labels.view(-1))
-        
+
         # VPL loss = reconstruction loss + KL divergence
         vpl_loss = reconstruction_loss + self.vpl_kl_weight * kl_loss
-        
+
         # Add orthogonal loss (CLOP-based) if enabled
         orthogonal_loss_val = torch.tensor(0.0, device=z.device)
         if self.vpl_orthogonal_weight > 0.0 and self.orthogonal_prototypes is not None:
             orthogonal_loss_val, pull_loss, orthonorm_loss = self._compute_clop_orthogonal_loss(z)
             vpl_loss = vpl_loss + orthogonal_loss_val
-        
+
         # Store for monitoring (use detach() to avoid GPU sync from .item())
         ctx.vpl_kl_loss = CtxVar(kl_loss.detach(), LIFECYCLE.BATCH)
         ctx.vpl_reconstruction_loss = CtxVar(
@@ -900,7 +900,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         if self.vpl_orthogonal_weight > 0.0:
             ctx.vpl_orthogonal_loss = CtxVar(
                 orthogonal_loss_val.detach(), LIFECYCLE.BATCH)
-        
+
         # Clean up intermediate tensors to save memory (keep only what's needed for backward)
         # Note: Don't delete tensors that are part of the computation graph
         if ctx.cur_mode != MODE.TRAIN:
@@ -951,7 +951,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         # This allows VPL components (feature_extractor, variational_encoder, latent_projection)
         # to learn faster while LLM learns slowly or is frozen
         use_vpl_optimizer = hasattr(ctx, 'vpl_optimizer') and ctx.vpl_optimizer is not None
-        
+
         if ctx.cfg.llm.accelerator.use:
             self.accelerator.backward(ctx.loss_task)
             if use_vpl_optimizer:
@@ -982,7 +982,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                             self._vpl_params_for_clip, ctx.grad_clip)
                     ctx.vpl_optimizer.step()
                     ctx.vpl_optimizer.zero_grad()
-                    
+
                     # LLM parameters are not updated (hidden_states was detached)
                     # If you want to update LLM as well, you can add:
                     # ctx.optimizer.step()
@@ -994,14 +994,14 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                                                        ctx.grad_clip)
                     ctx.optimizer.step()
                     ctx.optimizer.zero_grad()
-                
+
                 if ctx.scheduler is not None:
                     ctx.scheduler.step()
 
         # Free training data from GPU (del instead of .cpu() which
         # was a no-op bug — return values were discarded)
         del ctx.data_batch
-    
+
     def _hook_on_batch_end(self, ctx):
         if ctx.skip_this_batch:
             if ctx.cfg.llm.retry_on_nan_loss:
@@ -1015,20 +1015,20 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         ctx.num_samples += ctx.batch_size
         ctx.loss_batch_total += ctx.loss_batch.item() * ctx.batch_size
         ctx.loss_regular_total += float(ctx.get("loss_regular", 0.))
-        
+
         # Update VPL-specific statistics
         ctx.vpl_kl_loss_total += ctx.vpl_kl_loss * ctx.batch_size
         ctx.vpl_reconstruction_loss_total += ctx.vpl_reconstruction_loss * ctx.batch_size
         if self.vpl_orthogonal_weight > 0.0 and hasattr(ctx, 'vpl_orthogonal_loss'):
             ctx.vpl_orthogonal_loss_total += ctx.vpl_orthogonal_loss * ctx.batch_size
-        
+
         # NOTE: Fixed prototypes don't need orthonormal constraint updates
         # They are already orthonormal and fixed
-        
+
         # Cache label for evaluate
         ctx.ys_true.append(ctx.y_true)
         ctx.ys_pred.append(ctx.y_pred)
-        
+
         # NOTE: gc.collect() + empty_cache() removed here — calling
         # every 5 batches was adding ~1-2s overhead per round.
         # If OOM occurs, reduce batch_size or enable gradient
@@ -1057,7 +1057,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         if not hasattr(ctx, 'tokenizer') and hasattr(self, 'tokenizer'):
             ctx.tokenizer = self.tokenizer
         results = ctx.monitor.eval(ctx)
-        
+
         # Add VPL-specific metrics
         if hasattr(ctx, 'vpl_kl_loss_total') and ctx.num_samples > 0:
             kl_avg = ctx.vpl_kl_loss_total / ctx.num_samples
@@ -1071,29 +1071,29 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
             # Add vpl_total for monitor formatting (required by format_eval_res)
             if 'vpl_total' not in results:
                 results['vpl_total'] = ctx.num_samples
-            
+
             # Log VPL metrics to wandb if enabled (client-side logging)
             if ctx.cfg.wandb.use and ctx.cfg.wandb.online_track and ctx.cfg.wandb.client_train_info:
                 try:
                     import wandb
                     client_id = getattr(ctx, 'client_id', None)
                     client_prefix = f'client_{client_id}/' if client_id is not None else 'client/'
-                    
+
                     wandb_metrics = {
                         f'{client_prefix}{ctx.cur_mode}/vpl_total_loss': results.get('loss', 0.0),
                         f'{client_prefix}{ctx.cur_mode}/vpl_reconstruction_loss': results['vpl_reconstruction_loss'],
                         f'{client_prefix}{ctx.cur_mode}/vpl_kl_loss': results['vpl_kl_loss'],
                     }
-                    
+
                     # Add orthogonal loss if enabled
                     if self.vpl_orthogonal_weight > 0.0 and 'vpl_orthogonal_loss' in results:
                         wandb_metrics[f'{client_prefix}{ctx.cur_mode}/vpl_orthogonal_loss'] = results['vpl_orthogonal_loss']
-                    
+
                     # Use round as step for x-axis in wandb (if available)
                     step = None
                     if hasattr(ctx, 'cur_round'):
                         step = ctx.cur_round
-                    
+
                     if step is not None:
                         wandb.log(wandb_metrics, step=step)
                     else:
@@ -1102,24 +1102,24 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                     logger.warning("wandb not installed, skipping VPL metrics logging")
                 except Exception as e:
                     logger.warning(f"Failed to log VPL metrics to wandb: {e}")
-        
+
         # Collect z values for visualization (always, if available)
         # This is separate from GP prior collection - we always want z values for t-SNE
         if hasattr(self, 'z_history') and len(self.z_history) > 0:
             z_values = torch.cat(self.z_history, dim=0)  # (num_batches * batch_size, latent_dim)
-            
+
             # Store z values for visualization (sample a reasonable number)
             num_samples = min(100, len(z_values))  # store at most 100 samples
             sampled_indices = torch.randperm(len(z_values))[:num_samples]
             self.client_z_values = z_values[sampled_indices]  # (num_samples, latent_dim)
-            
+
             logger.info(f"Collected z values for visualization: "
                        f"{self.client_z_values.shape} from {len(self.z_history)} batches "
                        f"(round {ctx.cur_round if hasattr(ctx, 'cur_round') else 'unknown'})")
-            
+
             # Clear history for next round
             self.z_history = []
-        
+
         # Collect z distribution for GP prior (if enabled).
         # Aggregate the POSTERIOR parameters across samples:
         #   client_mu  = E_x[μ(x)]
@@ -1153,15 +1153,15 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
             self.client_z_mu = z_values.mean(dim=0)
             z_var = z_values.var(dim=0)
             self.client_z_logvar = torch.log(z_var + 1e-8)
-        
+
         setattr(ctx, 'eval_metrics', results)
-    
+
     # GP Prior methods (only used when vpl_use_gp_prior=True)
     def get_client_z_distribution(self):
         """
         Get client's z distribution (mu, logvar) for server aggregation.
         Only available when GP prior is enabled.
-        
+
         Returns:
             (mu, logvar): Tuple of mean and log variance tensors, or None
         """
@@ -1172,19 +1172,19 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
         if not hasattr(self, 'client_z_logvar') or self.client_z_logvar is None:
             return None
         return (self.client_z_mu.clone(), self.client_z_logvar.clone())
-    
+
     def get_client_z_values(self):
         """
         Get client's z values for visualization.
         Available for all VPL experiments (not just GP prior).
-        
+
         Returns:
             z_values: Tensor of z values (num_samples, latent_dim), or None
         """
         if not hasattr(self, 'client_z_values') or self.client_z_values is None:
             return None
         return self.client_z_values.clone()
-    
+
     def update_prior_from_server(self, client_mus, client_logvars, client_weights, current_round=None):
         """
         Update the mixture prior from server.
@@ -1239,27 +1239,27 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
                 'lr': optimizer.param_groups[0]['lr'],
             })
             logger.info(f"Added prior_logits to optimizer (lr={optimizer.param_groups[0]['lr']:.2e})")
-    
+
     def update_orthogonal_label_from_server(self, label):
         """
         Update orthogonal label from server.
-        
+
         Args:
             label: Orthogonal label (int)
         """
         self.orthogonal_label = label
-    
+
     def get_client_orthogonal_prototypes(self):
         """
         Get client's orthogonal prototypes for visualization.
-        
+
         Returns:
             prototypes: Tensor of prototypes (num_prototypes, latent_dim) or None
         """
         if hasattr(self, 'orthogonal_prototypes') and self.orthogonal_prototypes is not None:
             return self.orthogonal_prototypes
         return None
-    
+
     def _compute_clop_orthogonal_loss(self, z, labels=None):
         """
         Compute CLOP orthogonal loss (Eq. 9).
@@ -1330,7 +1330,7 @@ class VPLRewardChoiceTrainer(RewardChoiceTrainer):
             self.vpl_orthogonal_orthonorm_weight * orthonorm_loss
 
         return orthogonal_loss, pull_loss, orthonorm_loss
-    
+
 
 
 def call_vpl_reward_choice_trainer(trainer_type):

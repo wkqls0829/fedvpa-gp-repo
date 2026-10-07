@@ -47,7 +47,7 @@ class LLMMultiLoRAServer(Server):
 
         if self._cfg.llm.adapter.grouping.use:
             self.msg_buffer['adapter_eval'] = dict()
-        
+
         # VPL-GP related attributes
         self.vpl_gp_prior_mus = None
         self.vpl_gp_prior_logvars = None
@@ -144,7 +144,7 @@ class LLMMultiLoRAServer(Server):
 
             # Collect VPL components separately for aggregation
             vpl_components_dict = {}  # {component_name: {param_name: [values from clients]}}
-            
+
             for client_id in train_msg_buffer.keys():
                 if self.model_num == 1:
                     sample_size, model_para = train_msg_buffer[client_id]
@@ -164,27 +164,27 @@ class LLMMultiLoRAServer(Server):
                         if any(key.startswith(p)
                                for p in vpl_comp_prefixes):
                             vpl_component_keys.append(key)
-                    
+
                     # Collect VPL components
                     for key in vpl_component_keys:
                         if key not in vpl_components_dict:
                             vpl_components_dict[key] = []
                         vpl_components_dict[key].append((sample_size, model_para[key]))
-                    
+
                     # Remove VPL-related keys that are not model parameters
                     # These should be handled separately, not by the aggregator
-                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar', 
+                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar',
                                           'client_orthogonal_prototypes', 'sample_size'] + vpl_component_keys
-                    model_para_clean = {k: v for k, v in model_para.items() 
+                    model_para_clean = {k: v for k, v in model_para.items()
                                        if k not in vpl_keys_to_remove}
                     msg_list.append((sample_size, model_para_clean))
                 else:
                     train_data_size, model_para_multiple = \
                         train_msg_buffer[client_id]
                     # Remove VPL-related keys from model_para_multiple[model_idx]
-                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar', 
+                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar',
                                           'client_orthogonal_prototypes']
-                    model_para_clean = {k: v for k, v in model_para_multiple[model_idx].items() 
+                    model_para_clean = {k: v for k, v in model_para_multiple[model_idx].items()
                                       if k not in vpl_keys_to_remove}
                     msg_list.append((train_data_size, model_para_clean))
 
@@ -193,17 +193,17 @@ class LLMMultiLoRAServer(Server):
                 if self.model_num == 1:
                     sample_size, model_para = content
                     # Remove VPL-related keys that are not model parameters
-                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar', 
+                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar',
                                           'client_orthogonal_prototypes']
-                    model_para_clean = {k: v for k, v in model_para.items() 
+                    model_para_clean = {k: v for k, v in model_para.items()
                                        if k not in vpl_keys_to_remove}
                     msg_list.append((sample_size, model_para_clean))
                 else:
                     train_data_size, model_para_multiple = content
                     # Remove VPL-related keys from model_para_multiple[model_idx]
-                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar', 
+                    vpl_keys_to_remove = ['client_z_values', 'client_z_mu', 'client_z_logvar',
                                           'client_orthogonal_prototypes']
-                    model_para_clean = {k: v for k, v in model_para_multiple[model_idx].items() 
+                    model_para_clean = {k: v for k, v in model_para_multiple[model_idx].items()
                                       if k not in vpl_keys_to_remove}
                     msg_list.append((train_data_size, model_para_clean))
 
@@ -232,7 +232,7 @@ class LLMMultiLoRAServer(Server):
             # Due to lazy load, we merge two state dict
             merged_param = merge_param_dict(model.state_dict().copy(), result)
             model.load_state_dict(merged_param, strict=False)
-            
+
             # Aggregate VPL components (weighted average by sample size)
             if len(vpl_components_dict) > 0:
                 aggregated_vpl_components = {}
@@ -257,21 +257,21 @@ class LLMMultiLoRAServer(Server):
                                     avg_value = value
                         if avg_value is not None:
                             aggregated_vpl_components[key] = avg_value
-                
+
                 # Store aggregated VPL components in aggregator for checkpoint saving
                 if not hasattr(aggregator, 'vpl_components'):
                     aggregator.vpl_components = {}
                 aggregator.vpl_components.update(aggregated_vpl_components)
                 logger.info(f"Aggregated {len(aggregated_vpl_components)} VPL component parameters")
-        
+
         # VPL-GP: Collect z distributions from clients (only if GP prior is enabled)
         if hasattr(self._cfg.llm, 'vpl_use_gp_prior') and self._cfg.llm.vpl_use_gp_prior:
             self._collect_vpl_gp_prior_distributions()
             # Compute orthogonal labels only if orthogonal loss is enabled
-            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and 
+            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and
                 self._cfg.llm.vpl_orthogonal_weight > 0):
                 self._compute_balanced_orthogonal_labels()
-        
+
         # Always collect z values from this round so the persistent
         # `client_z_values_dict` and `client_average_z_dict` are up to
         # date for every client (needed for the Stage-2 RL
@@ -280,9 +280,9 @@ class LLMMultiLoRAServer(Server):
         # `vpl_tsne_visualize_freq`.
         if hasattr(self._cfg.llm, 'vpl_latent_dim'):  # VPL is enabled
             self._collect_z_values_for_visualization()
-        
+
         return aggregated_num
-    
+
     def merge_eval_results_from_all_clients(self):
         """
         Override to add VPL-specific wandb logging for aggregated results.
@@ -290,21 +290,21 @@ class LLMMultiLoRAServer(Server):
         """
         # Call parent method to get aggregated results
         formatted_logs_all_set = super().merge_eval_results_from_all_clients()
-        
+
         # Log metrics to wandb if enabled (for both VPL and non-VPL)
         # This avoids the issue where logline_2_wandb_dict removes Results_raw for Server role
         if (self._cfg.wandb.use and self._cfg.wandb.online_track):
             is_vpl = hasattr(self._cfg.llm, 'vpl_latent_dim')  # VPL is enabled
             try:
                 import wandb
-                
+
                 round = max(self.msg_buffer['eval'].keys())
                 eval_msg_buffer = self.msg_buffer['eval'][round]
-                
+
                 # Check if this is HRL dataset for reward model metrics
                 dataset_type = getattr(self._cfg.data, 'type', '').lower()
                 is_hrl = 'hh-rlhf' in dataset_type or 'hrl' in dataset_type
-                
+
                 if is_vpl:
                     # VPL-specific metrics
                     # Collect VPL metrics from all clients
@@ -315,16 +315,16 @@ class LLMMultiLoRAServer(Server):
                         'vpl_orthogonal_loss': []
                     }
                     client_ids = []
-                    
+
                     for client_id in eval_msg_buffer:
                         if eval_msg_buffer[client_id] is None:
                             continue
                         if client_id in self.unseen_clients_id:
                             continue  # Skip unseen clients for aggregated metrics
-                        
+
                         client_results = eval_msg_buffer[client_id]
                         client_ids.append(client_id)
-                        
+
                         if 'loss' in client_results:
                             vpl_metrics_all_clients['vpl_total_loss'].append(float(client_results['loss']))
                         if 'vpl_reconstruction_loss' in client_results:
@@ -333,7 +333,7 @@ class LLMMultiLoRAServer(Server):
                             vpl_metrics_all_clients['vpl_kl_loss'].append(float(client_results['vpl_kl_loss']))
                         if 'vpl_orthogonal_loss' in client_results:
                             vpl_metrics_all_clients['vpl_orthogonal_loss'].append(float(client_results['vpl_orthogonal_loss']))
-                    
+
                     # Collect reward model metrics for HRL
                     reward_metrics_all_clients = {
                         'avg_harmlessness': [],
@@ -347,7 +347,7 @@ class LLMMultiLoRAServer(Server):
                                 continue
                             if client_id in self.unseen_clients_id:
                                 continue
-                            
+
                             client_results = eval_msg_buffer[client_id]
                             if 'avg_harmlessness' in client_results:
                                 reward_metrics_all_clients['avg_harmlessness'].append(float(client_results['avg_harmlessness']))
@@ -357,7 +357,7 @@ class LLMMultiLoRAServer(Server):
                                 reward_metrics_all_clients['helpfulness_winrate'].append(float(client_results['helpfulness_winrate']))
                             if 'harmlessness_winrate' in client_results:
                                 reward_metrics_all_clients['harmlessness_winrate'].append(float(client_results['harmlessness_winrate']))
-                    
+
                     # Log aggregated metrics (averaged over all clients)
                     wandb_metrics = {}
                     if vpl_metrics_all_clients['vpl_total_loss']:
@@ -368,7 +368,7 @@ class LLMMultiLoRAServer(Server):
                         wandb_metrics['server/train/vpl_kl_loss_avg'] = np.mean(vpl_metrics_all_clients['vpl_kl_loss'])
                     if vpl_metrics_all_clients['vpl_orthogonal_loss']:
                         wandb_metrics['server/train/vpl_orthogonal_loss_avg'] = np.mean(vpl_metrics_all_clients['vpl_orthogonal_loss'])
-                    
+
                     # Log reward model metrics for HRL (averaged)
                     if is_hrl:
                         if reward_metrics_all_clients['avg_harmlessness']:
@@ -379,7 +379,7 @@ class LLMMultiLoRAServer(Server):
                             wandb_metrics['server/train/helpfulness_winrate_avg'] = np.mean(reward_metrics_all_clients['helpfulness_winrate'])
                         if reward_metrics_all_clients['harmlessness_winrate']:
                             wandb_metrics['server/train/harmlessness_winrate_avg'] = np.mean(reward_metrics_all_clients['harmlessness_winrate'])
-                
+
                     # Log individual client metrics (for designated clients)
                     # Log first 3 clients as designated clients (or all if less than 3)
                     designated_clients = client_ids[:min(3, len(client_ids))]
@@ -387,7 +387,7 @@ class LLMMultiLoRAServer(Server):
                         if eval_msg_buffer[client_id] is None:
                             continue
                         client_results = eval_msg_buffer[client_id]
-                        
+
                         if 'loss' in client_results:
                             wandb_metrics[f'client_{client_id}/train/vpl_total_loss'] = float(client_results['loss'])
                         if 'vpl_reconstruction_loss' in client_results:
@@ -396,7 +396,7 @@ class LLMMultiLoRAServer(Server):
                             wandb_metrics[f'client_{client_id}/train/vpl_kl_loss'] = float(client_results['vpl_kl_loss'])
                         if 'vpl_orthogonal_loss' in client_results:
                             wandb_metrics[f'client_{client_id}/train/vpl_orthogonal_loss'] = float(client_results['vpl_orthogonal_loss'])
-                        
+
                         # Log reward model metrics for HRL (individual clients)
                         if is_hrl:
                             if 'avg_harmlessness' in client_results:
@@ -407,7 +407,7 @@ class LLMMultiLoRAServer(Server):
                                 wandb_metrics[f'client_{client_id}/train/helpfulness_winrate'] = float(client_results['helpfulness_winrate'])
                             if 'harmlessness_winrate' in client_results:
                                 wandb_metrics[f'client_{client_id}/train/harmlessness_winrate'] = float(client_results['harmlessness_winrate'])
-                    
+
                     if wandb_metrics:
                         wandb.log(wandb_metrics, step=round)
                         logger.info(f"Logged VPL metrics to wandb for round {round}: {len(wandb_metrics)} metrics")
@@ -420,7 +420,7 @@ class LLMMultiLoRAServer(Server):
                         'acc': [],
                         'total': []
                     }
-                    
+
                     # Collect reward model metrics for HRL
                     reward_metrics_all_clients = {
                         'avg_harmlessness': [],
@@ -428,17 +428,17 @@ class LLMMultiLoRAServer(Server):
                         'helpfulness_winrate': [],
                         'harmlessness_winrate': []
                     }
-                    
+
                     client_ids = []
                     for client_id in eval_msg_buffer:
                         if eval_msg_buffer[client_id] is None:
                             continue
                         if client_id in self.unseen_clients_id:
                             continue
-                        
+
                         client_results = eval_msg_buffer[client_id]
                         client_ids.append(client_id)
-                        
+
                         # Collect standard metrics
                         if 'loss' in client_results:
                             standard_metrics_all_clients['loss'].append(float(client_results['loss']))
@@ -448,7 +448,7 @@ class LLMMultiLoRAServer(Server):
                             standard_metrics_all_clients['acc'].append(float(client_results['acc']))
                         if 'total' in client_results:
                             standard_metrics_all_clients['total'].append(float(client_results['total']))
-                        
+
                         # Collect reward model metrics for HRL
                         if is_hrl:
                             if 'avg_harmlessness' in client_results:
@@ -459,7 +459,7 @@ class LLMMultiLoRAServer(Server):
                                 reward_metrics_all_clients['helpfulness_winrate'].append(float(client_results['helpfulness_winrate']))
                             if 'harmlessness_winrate' in client_results:
                                 reward_metrics_all_clients['harmlessness_winrate'].append(float(client_results['harmlessness_winrate']))
-                    
+
                     # Log aggregated metrics (averaged over all clients)
                     wandb_metrics = {}
                     if standard_metrics_all_clients['loss']:
@@ -470,7 +470,7 @@ class LLMMultiLoRAServer(Server):
                         wandb_metrics['server/train/acc_avg'] = np.mean(standard_metrics_all_clients['acc'])
                     if standard_metrics_all_clients['total']:
                         wandb_metrics['server/train/total_avg'] = np.mean(standard_metrics_all_clients['total'])
-                    
+
                     # Log reward model metrics for HRL (averaged)
                     if is_hrl:
                         if reward_metrics_all_clients['avg_harmlessness']:
@@ -481,7 +481,7 @@ class LLMMultiLoRAServer(Server):
                             wandb_metrics['server/train/helpfulness_winrate_avg'] = np.mean(reward_metrics_all_clients['helpfulness_winrate'])
                         if reward_metrics_all_clients['harmlessness_winrate']:
                             wandb_metrics['server/train/harmlessness_winrate_avg'] = np.mean(reward_metrics_all_clients['harmlessness_winrate'])
-                    
+
                     # Log individual client metrics (for designated clients)
                     # Log first 3 clients as designated clients (or all if less than 3)
                     designated_clients = client_ids[:min(3, len(client_ids))]
@@ -489,14 +489,14 @@ class LLMMultiLoRAServer(Server):
                         if eval_msg_buffer[client_id] is None:
                             continue
                         client_results = eval_msg_buffer[client_id]
-                        
+
                         if 'loss' in client_results:
                             wandb_metrics[f'client_{client_id}/train/loss'] = float(client_results['loss'])
                         if 'avg_loss' in client_results:
                             wandb_metrics[f'client_{client_id}/train/avg_loss'] = float(client_results['avg_loss'])
                         if 'acc' in client_results:
                             wandb_metrics[f'client_{client_id}/train/acc'] = float(client_results['acc'])
-                        
+
                         # Log reward model metrics for HRL (individual clients)
                         if is_hrl:
                             if 'avg_harmlessness' in client_results:
@@ -507,11 +507,11 @@ class LLMMultiLoRAServer(Server):
                                 wandb_metrics[f'client_{client_id}/train/helpfulness_winrate'] = float(client_results['helpfulness_winrate'])
                             if 'harmlessness_winrate' in client_results:
                                 wandb_metrics[f'client_{client_id}/train/harmlessness_winrate'] = float(client_results['harmlessness_winrate'])
-                    
+
                     if wandb_metrics:
                         wandb.log(wandb_metrics, step=round)
                         logger.info(f"Logged FedBiscuit metrics to wandb for round {round}: {len(wandb_metrics)} metrics")
-                        
+
             except ImportError:
                 logger.warning("wandb not installed, skipping metrics logging")
             except Exception as e:
@@ -568,11 +568,11 @@ class LLMMultiLoRAServer(Server):
         # Only process adapter_eval if grouping is enabled
         if not self._cfg.llm.adapter.grouping.use:
             return False
-        
+
         # Initialize adapter_eval if not already initialized
         if 'adapter_eval' not in self.msg_buffer:
             self.msg_buffer['adapter_eval'] = dict()
-        
+
         if rnd not in self.msg_buffer['adapter_eval'].keys():
             self.msg_buffer['adapter_eval'][rnd] = dict()
 
@@ -653,7 +653,7 @@ class LLMMultiLoRAServer(Server):
         self._start_new_training_round(skip_grouping=True)
 
         return True  # move_on_flag
-    
+
     @staticmethod
     def _get_dataset_num_categories(cfg):
         """Return the number of natural categories for a dataset."""
@@ -718,58 +718,58 @@ class LLMMultiLoRAServer(Server):
             cids = [k for k, v in labels.items() if v == cat]
             logger.info(f"  Label {cat}: {len(cids)} clients {cids}")
         return labels
-    
+
     def _collect_vpl_gp_prior_distributions(self):
         """
         Collect z distributions (mu, logvar) from clients for VPL-GP mixture prior.
         Called after _perform_federated_aggregation.
         """
         train_msg_buffer = self.msg_buffer['train'][self.state]
-        
+
         client_mus = []
         client_logvars = []
         client_weights = []
         client_ids = []
-        
+
         for client_id in train_msg_buffer.keys():
             if self.model_num == 1:
                 _, model_para = train_msg_buffer[client_id]
             else:
                 _, model_para_multiple = train_msg_buffer[client_id]
                 model_para = model_para_multiple[0]  # Use first model
-            
+
             # Extract z distribution from model parameters
             if 'client_z_mu' in model_para and 'client_z_logvar' in model_para:
                 mu = model_para['client_z_mu']
                 logvar = model_para['client_z_logvar']
-                
+
                 # Convert to tensors if needed
                 if not isinstance(mu, torch.Tensor):
                     mu = torch.tensor(mu, dtype=torch.float32)
                 if not isinstance(logvar, torch.Tensor):
                     logvar = torch.tensor(logvar, dtype=torch.float32)
-                
+
                 client_mus.append(mu)
                 client_logvars.append(logvar)
                 client_ids.append(client_id)
-                
+
                 # Use sample size as weight
                 sample_size = model_para.get('sample_size', 1)
                 client_weights.append(sample_size)
-        
+
         if len(client_mus) == 0:
             return
-        
+
         # Normalize weights
         total_weight = sum(client_weights)
         if total_weight > 0:
             client_weights = [w / total_weight for w in client_weights]
-        
+
         # Stack tensors
         client_mus = torch.stack(client_mus)  # (num_clients, latent_dim)
         client_logvars = torch.stack(client_logvars)  # (num_clients, latent_dim)
         client_weights = torch.tensor(client_weights, dtype=torch.float32)
-        
+
         # Update prior (accumulate across rounds)
         if self.vpl_gp_prior_mus is None:
             # First round: initialize
@@ -783,14 +783,14 @@ class LLMMultiLoRAServer(Server):
             # Update existing clients and add new ones
             existing_client_ids = set(getattr(self, '_vpl_gp_client_ids', []))
             current_client_ids = set(client_ids)
-            
+
             # Update existing
             updated_indices = []
             new_mus = []
             new_logvars = []
             new_weights = []
             new_ids = []
-            
+
             for idx, cid in enumerate(client_ids):
                 if cid in existing_client_ids:
                     # Update existing
@@ -805,38 +805,38 @@ class LLMMultiLoRAServer(Server):
                     new_logvars.append(client_logvars[idx])
                     new_weights.append(client_weights[idx])
                     new_ids.append(cid)
-            
+
             # Append new clients
             if len(new_mus) > 0:
                 new_mus = torch.stack(new_mus)
                 new_logvars = torch.stack(new_logvars)
                 new_weights = torch.stack(new_weights)
-                
+
                 self.vpl_gp_prior_mus = torch.cat([self.vpl_gp_prior_mus, new_mus], dim=0)
                 self.vpl_gp_prior_logvars = torch.cat([self.vpl_gp_prior_logvars, new_logvars], dim=0)
                 self.vpl_gp_prior_weights = torch.cat([self.vpl_gp_prior_weights, new_weights], dim=0)
-                
+
                 # Update client ID list
                 if not hasattr(self, '_vpl_gp_client_ids'):
                     self._vpl_gp_client_ids = []
                 self._vpl_gp_client_ids.extend(new_ids)
-            
+
             # Renormalize weights
             total_weight = self.vpl_gp_prior_weights.sum()
             if total_weight > 0:
                 self.vpl_gp_prior_weights = self.vpl_gp_prior_weights / total_weight
-            
+
             updated_count = len(updated_indices) + len(new_ids)
             from_previous = len(existing_client_ids) - len(updated_indices)
-        
+
         # Store client IDs for tracking
         if not hasattr(self, '_vpl_gp_client_ids'):
             self._vpl_gp_client_ids = client_ids
-        
+
         logger.info(f"Collected {len(client_mus)} client z distributions for VPL-GP prior. "
                    f"Total clients in prior: {len(self.vpl_gp_prior_mus)} "
                    f"(updated: {updated_count}, from previous rounds: {from_previous})")
-    
+
     def _compute_balanced_orthogonal_labels(self):
         """
         Compute balanced orthogonal labels using k-means on z means.
@@ -844,11 +844,11 @@ class LLMMultiLoRAServer(Server):
         For hh-rlhf dataset, k is fixed to 2.
         """
         train_msg_buffer = self.msg_buffer['train'][self.state]
-        
+
         # Check if manual labels are explicitly requested
-        use_manual = (hasattr(self._cfg.llm, 'vpl_use_manual_orthogonal_labels') and 
+        use_manual = (hasattr(self._cfg.llm, 'vpl_use_manual_orthogonal_labels') and
                      self._cfg.llm.vpl_use_manual_orthogonal_labels)
-        
+
         if use_manual:
             # Use manual labels if explicitly configured
             manual_labels = self._compute_manual_orthogonal_labels(train_msg_buffer)
@@ -858,7 +858,7 @@ class LLMMultiLoRAServer(Server):
                 label_to_clients = defaultdict(list)
                 for client_id, label in manual_labels.items():
                     label_to_clients[label].append(client_id)
-                
+
                 # Log detailed assignment information
                 label_counts = {label: len(clients) for label, clients in label_to_clients.items()}
                 logger.info(f"Computed manual orthogonal labels for {len(manual_labels)} clients "
@@ -867,35 +867,35 @@ class LLMMultiLoRAServer(Server):
                     client_ids = sorted(label_to_clients[label])
                     logger.info(f"  Label {label}: {count} clients -> {client_ids}")
                 return
-        
+
         # Otherwise, use k-means on z means
         if self.vpl_gp_prior_mus is None or len(self.vpl_gp_prior_mus) == 0:
             return
-        
+
         try:
             from sklearn.cluster import KMeans
-            
+
             # Get z means for participating clients
             participating_client_ids = sorted(train_msg_buffer.keys())
             if len(participating_client_ids) < 2:
                 return
-            
+
             # Map client IDs to indices in prior
             client_id_to_idx = {cid: idx for idx, cid in enumerate(self._vpl_gp_client_ids)}
             z_means = []
             valid_client_ids = []
-            
+
             for client_id in participating_client_ids:
                 if client_id in client_id_to_idx:
                     idx = client_id_to_idx[client_id]
                     z_means.append(self.vpl_gp_prior_mus[idx].cpu().numpy())
                     valid_client_ids.append(client_id)
-            
+
             if len(z_means) < 2:
                 return
-            
+
             z_means = np.array(z_means)
-            
+
             # Determine number of clusters from dataset categories
             n_clusters = self._get_dataset_num_categories(self._cfg)
             # Allow config override
@@ -904,24 +904,24 @@ class LLMMultiLoRAServer(Server):
             if cfg_prototypes is not None and cfg_prototypes > 0:
                 n_clusters = cfg_prototypes
             logger.info(f"Using k={n_clusters} for k-means clustering")
-            
+
             # Ensure n_clusters doesn't exceed number of clients
             n_clusters = min(n_clusters, len(z_means))
-            
+
             # K-means clustering
             kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
             labels = kmeans.fit_predict(z_means)
-            
+
             # Create label dict
             self.vpl_orthogonal_client_labels = {
                 client_id: int(label) for client_id, label in zip(valid_client_ids, labels)
             }
-            
+
             # Count labels for logging (label -> list of client IDs)
             label_to_clients = defaultdict(list)
             for client_id, label in zip(valid_client_ids, labels):
                 label_to_clients[int(label)].append(client_id)
-            
+
             # Log detailed assignment information
             label_counts = {label: len(clients) for label, clients in label_to_clients.items()}
             logger.info(f"Computed k-means orthogonal labels (k={n_clusters}) for {len(valid_client_ids)} clients "
@@ -931,7 +931,7 @@ class LLMMultiLoRAServer(Server):
                 logger.info(f"  Label {label}: {count} clients -> {client_ids}")
         except Exception as e:
             logger.warning(f"Failed to compute balanced orthogonal labels: {e}")
-    
+
     def _collect_z_values_for_visualization(self):
         """
         Collect z values and orthogonal prototypes from clients for t-SNE visualization.
@@ -940,23 +940,23 @@ class LLMMultiLoRAServer(Server):
         Also stores orthogonal labels for each client (including non-participating ones).
         """
         train_msg_buffer = self.msg_buffer['train'][self.state]
-        
+
         # Do NOT reset; keep last known z/prototypes for non-participating clients
         has_new_z = False
         z_values_list = []
         client_ids_list = []
         participating_clients = set()
-        
+
         # Collect z values from participating clients
         for client_id in train_msg_buffer.keys():
             participating_clients.add(client_id)
-            
+
             if self.model_num == 1:
                 _, model_para = train_msg_buffer[client_id]
             else:
                 _, model_para_multiple = train_msg_buffer[client_id]
                 model_para = model_para_multiple[0]
-            
+
             # Extract z values (keep only latest round)
             if 'client_z_values' in model_para:
                 z_values = model_para['client_z_values']
@@ -964,22 +964,22 @@ class LLMMultiLoRAServer(Server):
                     z_values = z_values.detach().cpu().numpy()
                 elif isinstance(z_values, list):
                     z_values = np.array(z_values)
-                
+
                 if len(z_values.shape) == 1:
                     z_values = z_values.reshape(1, -1)
-                
+
                 z_values_list.append(z_values)
                 client_ids_list.extend([client_id] * len(z_values))
                 has_new_z = True
-                
+
                 # Log if this is new or reused z
                 if client_id in self.client_z_values_dict and len(self.client_z_values_dict[client_id]) > 0:
                     logger.debug(f"Client {client_id}: Updating z values (new round {self.state})")
                 else:
                     logger.debug(f"Client {client_id}: First time storing z values")
-            
+
             # Collect orthogonal prototypes (if orthogonal loss is enabled)
-            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and 
+            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and
                 self._cfg.llm.vpl_orthogonal_weight > 0 and
                 'client_orthogonal_prototypes' in model_para):
                 prototypes = model_para['client_orthogonal_prototypes']
@@ -987,10 +987,10 @@ class LLMMultiLoRAServer(Server):
                     prototypes = prototypes.detach().cpu().numpy()  # Fix: detach() before numpy()
                 elif isinstance(prototypes, list):
                     prototypes = np.array(prototypes)
-                
+
                 # Store only latest round prototypes per client
                 self.client_orthogonal_prototypes_dict[client_id] = prototypes
-        
+
         # Store/update orthogonal labels for all clients (including non-participating)
         # This ensures all clients have labels even if they didn't participate this round
         # Always compute labels based on client data type (harmlessness/helpfulness)
@@ -1012,7 +1012,7 @@ class LLMMultiLoRAServer(Server):
                     self.client_orthogonal_labels_dict[client_id] = self.vpl_orthogonal_client_labels[client_id]
                     if client_id not in participating_clients:
                         logger.debug(f"Client {client_id}: Storing orthogonal label {self.vpl_orthogonal_client_labels[client_id]} (non-participating)")
-        
+
         # If no new z this round but we have previously stored z, keep using them
         if len(z_values_list) == 0:
             if len(self.client_z_values_dict) == 0:
@@ -1022,25 +1022,25 @@ class LLMMultiLoRAServer(Server):
             all_z_values = np.concatenate(z_values_list, axis=0)
             # Store only the latest round's z values per client (replace old z, don't accumulate)
             # This ensures t-SNE visualization shows only the current round's z distribution
-            
+
             for client_id in set(client_ids_list):
                 client_z_mask = np.array(client_ids_list) == client_id
                 client_z = all_z_values[client_z_mask]
-                
+
                 # Get orthogonal label for this client
                 client_label = self.client_orthogonal_labels_dict.get(client_id, None)
-                
+
                 # Replace old z with new z (only keep latest round's z values)
                 # This prevents accumulation across rounds and keeps t-SNE visualization clean
                 self.client_z_values_dict[client_id] = client_z.tolist()
-            
+
             # After updating all clients, balance across harmlessness and helpfulness
             # Group clients by label and ensure balanced representation
             harmless_clients = [cid for cid, label in self.client_orthogonal_labels_dict.items() if label == 0]
             helpful_clients = [cid for cid, label in self.client_orthogonal_labels_dict.items() if label == 1]
-            
+
             # Store only latest round's z values per client (no accumulation across rounds)
-        
+
         # Check all clients (1 to client_num) to ensure we have z for all
         all_client_ids = set(range(1, self.client_num + 1))
         missing_clients = all_client_ids - set(self.client_z_values_dict.keys())
@@ -1049,12 +1049,12 @@ class LLMMultiLoRAServer(Server):
             logger.debug(f"Round {self.state}: Clients without any z values (never participated): {sorted(missing_clients)} (will not appear in t-SNE)")
         if non_participating_with_z:
             logger.debug(f"Round {self.state}: Non-participating clients using previous round z values: {sorted(non_participating_with_z)} (will appear in t-SNE)")
-        
+
         # Visualize every 10 rounds (or every round if configured)
         visualize_freq = getattr(self._cfg.llm, 'vpl_tsne_visualize_freq', 10)  # Default: every 10 rounds
         if self.state % visualize_freq == 0:
             self._visualize_cross_client_z()
-        
+
         total_points = sum(len(v) for v in self.client_z_values_dict.values())
         unique_clients = len(self.client_z_values_dict)
         non_participating_count = len(set(self.client_z_values_dict.keys()) - participating_clients)
@@ -1062,7 +1062,7 @@ class LLMMultiLoRAServer(Server):
                    f"(new_z={has_new_z}). Total stored: {total_points} points across {unique_clients} clients "
                    f"({non_participating_count} non-participating using previous z). "
                    f"Orthogonal labels stored for {len(self.client_orthogonal_labels_dict)} clients.")
-    
+
     def _visualize_cross_client_z(self):
         """
         Visualize cross-client z values using t-SNE.
@@ -1119,12 +1119,12 @@ class LLMMultiLoRAServer(Server):
                         if isinstance(mu, torch.Tensor):
                             mu = mu.cpu().numpy()
                         client_mus_dict[cid] = mu
-            
+
             # Get orthogonal prototypes if available (only if orthogonal loss is enabled)
             orthogonal_prototypes = None
-            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and 
+            if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and
                 self._cfg.llm.vpl_orthogonal_weight > 0 and
-                hasattr(self, 'client_orthogonal_prototypes_dict') and 
+                hasattr(self, 'client_orthogonal_prototypes_dict') and
                 len(self.client_orthogonal_prototypes_dict) > 0):
                 # Take the first client's prototypes (they should be the same across clients after QR decomposition)
                 first_client_id = next(iter(self.client_orthogonal_prototypes_dict.keys()))
@@ -1135,7 +1135,7 @@ class LLMMultiLoRAServer(Server):
                     elif isinstance(prototypes, list):
                         prototypes = np.array(prototypes)
                     orthogonal_prototypes = prototypes
-            
+
             visualize_cross_client_z(
                 z_values=all_z,
                 client_labels=client_labels_list,
@@ -1148,7 +1148,7 @@ class LLMMultiLoRAServer(Server):
             )
         except Exception as e:
             logger.warning(f"Failed to visualize cross-client z: {e}")
-    
+
     def _compute_client_average_z_for_checkpoint(self):
         """
         Compute average z for each client from stored z_values_dict.
@@ -1157,10 +1157,10 @@ class LLMMultiLoRAServer(Server):
         Ensures ALL clients (1 to client_num) have z values saved, even if they didn't participate in the final round.
         """
         self.client_average_z_dict = {}
-        
+
         # Get the most recent round's z values from train_msg_buffer
         train_msg_buffer = self.msg_buffer.get('train', {}).get(self.state, {})
-        
+
         for client_id in range(1, self.client_num + 1):
             # Priority 1: Use z values from the most recent round (current round)
             if client_id in train_msg_buffer:
@@ -1169,30 +1169,30 @@ class LLMMultiLoRAServer(Server):
                 else:
                     _, model_para_multiple = train_msg_buffer[client_id]
                     model_para = model_para_multiple[0]
-                
+
                 if 'client_z_values' in model_para:
                     z_values = model_para['client_z_values']
                     if isinstance(z_values, torch.Tensor):
                         z_values = z_values.detach().cpu().numpy()
                     elif isinstance(z_values, list):
                         z_values = np.array(z_values)
-                    
+
                     if len(z_values.shape) == 1:
                         z_values = z_values.reshape(1, -1)
-                    
+
                     # Compute average z from the most recent round's z values
                     avg_z = np.mean(z_values, axis=0)  # (latent_dim,)
                     avg_z_tensor = torch.tensor(avg_z, dtype=torch.float32)
                     self.client_average_z_dict[client_id] = avg_z_tensor
                     logger.debug(f"Computed average z for client {client_id} from most recent round: shape {avg_z_tensor.shape}, from {len(z_values)} z samples")
                     continue
-            
+
             # Priority 2: Fallback to stored z_values_dict (if current round data not available)
             # This ensures we get z values for clients that didn't participate in the final round
             if client_id in self.client_z_values_dict and len(self.client_z_values_dict[client_id]) > 0:
                 z_list = self.client_z_values_dict[client_id]
                 z_array = np.array(z_list)  # (num_samples, latent_dim)
-                
+
                 # Compute average z from stored z values
                 avg_z = np.mean(z_array, axis=0)  # (latent_dim,)
                 avg_z_tensor = torch.tensor(avg_z, dtype=torch.float32)
@@ -1212,27 +1212,27 @@ class LLMMultiLoRAServer(Server):
                         else:
                             _, model_para_multiple = round_buffer[client_id]
                             model_para = model_para_multiple[0]
-                        
+
                         if 'client_z_values' in model_para:
                             z_values = model_para['client_z_values']
                             if isinstance(z_values, torch.Tensor):
                                 z_values = z_values.detach().cpu().numpy()
                             elif isinstance(z_values, list):
                                 z_values = np.array(z_values)
-                            
+
                             if len(z_values.shape) == 1:
                                 z_values = z_values.reshape(1, -1)
-                            
+
                             avg_z = np.mean(z_values, axis=0)
                             avg_z_tensor = torch.tensor(avg_z, dtype=torch.float32)
                             self.client_average_z_dict[client_id] = avg_z_tensor
                             logger.debug(f"Computed average z for client {client_id} from round {round_num}: shape {avg_z_tensor.shape}, from {len(z_values)} z samples")
                             found_z = True
                             break
-                
+
                 if not found_z:
                     logger.warning(f"Could not find z values for client {client_id} in any round or stored z_values_dict. This client will not have z values in checkpoint.")
-        
+
         if len(self.client_average_z_dict) > 0:
             logger.info(f"Computed average z for {len(self.client_average_z_dict)}/{self.client_num} clients for checkpoint saving (for RL training)")
             if len(self.client_average_z_dict) < self.client_num:
@@ -1240,14 +1240,14 @@ class LLMMultiLoRAServer(Server):
                 logger.warning(f"Missing z values for clients: {sorted(missing)}")
         else:
             logger.warning("No client average z computed (no z values stored)")
-    
+
     def check_and_save(self):
         """
         Override to save client average z information in checkpoint.
         """
         # Call parent's check_and_save logic
         from federatedscope.core.auxiliaries.utils import add_prefix_to_path
-        
+
         # early stopping
         if "Results_weighted_avg" in self.history_results and \
                 self._cfg.eval.best_res_update_round_wise_key in \
@@ -1296,7 +1296,7 @@ class LLMMultiLoRAServer(Server):
             self.save_best_results()
             if not self._cfg.federate.make_global_eval:
                 self.save_client_eval_results()
-            
+
             # Save final checkpoint with client average z (only for VPL)
             if self._cfg.federate.save_to != '':
                 path = add_prefix_to_path('final_', self._cfg.federate.save_to)
@@ -1307,14 +1307,14 @@ class LLMMultiLoRAServer(Server):
                         self._compute_client_average_z_for_checkpoint()
                         client_average_z_dict = self.client_average_z_dict
                     self.aggregator.save_model(path, self.state, client_average_z_dict=client_average_z_dict)
-            
+
             self.terminate(msg_type='finish')
 
         # Clean the clients evaluation msg buffer
         if not self._cfg.federate.make_global_eval:
             round = max(self.msg_buffer['eval'].keys())
             self.msg_buffer['eval'][round].clear()
-    
+
     def broadcast_model_para(self,
                              msg_type='model_para',
                              sample_client_num=-1,
@@ -1328,20 +1328,20 @@ class LLMMultiLoRAServer(Server):
             sample_client_num=sample_client_num,
             filter_unseen_clients=filter_unseen_clients
         )
-        
+
         # Broadcast VPL-GP prior if available
-        if (hasattr(self._cfg.llm, 'vpl_use_gp_prior') and 
-            self._cfg.llm.vpl_use_gp_prior and 
+        if (hasattr(self._cfg.llm, 'vpl_use_gp_prior') and
+            self._cfg.llm.vpl_use_gp_prior and
             self.vpl_gp_prior_mus is not None and
             self.state > 0):  # Don't broadcast at round 0
-            
+
             # Prepare prior data
             prior_content = {
                 'vpl_gp_prior_mus': self.vpl_gp_prior_mus.cpu().tolist(),
                 'vpl_gp_prior_logvars': self.vpl_gp_prior_logvars.cpu().tolist(),
                 'vpl_gp_prior_weights': self.vpl_gp_prior_weights.cpu().tolist(),
             }
-            
+
             # Use same logic as parent class: sample if sample_client_num > 0, else broadcast to all
             if sample_client_num > 0:
                 # Check if sampler is available and has idle clients
@@ -1358,7 +1358,7 @@ class LLMMultiLoRAServer(Server):
             else:
                 # Broadcast to all clients
                 selected_clients = list(self.comm_manager.neighbors.keys())
-            
+
             for receiver in selected_clients:
                 self.comm_manager.send(
                     Message(msg_type='vpl_gp_prior',
@@ -1367,15 +1367,15 @@ class LLMMultiLoRAServer(Server):
                            state=self.state,
                            timestamp=self.cur_timestamp,
                            content=prior_content))
-            
+
             logger.info(f"Broadcasting VPL-GP prior with {len(self.vpl_gp_prior_mus)} client distributions to {len(selected_clients)} clients at round {self.state}")
-        
+
         # Broadcast orthogonal labels if available and orthogonal loss is enabled
-        if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and 
+        if (hasattr(self._cfg.llm, 'vpl_orthogonal_weight') and
             self._cfg.llm.vpl_orthogonal_weight > 0 and
             self.vpl_orthogonal_client_labels is not None and
             self.state > 0):  # Don't broadcast at round 0
-            
+
             # Use same logic as parent class: sample if sample_client_num > 0, else broadcast to all
             if sample_client_num > 0:
                 # Check if sampler is available and has idle clients
@@ -1392,7 +1392,7 @@ class LLMMultiLoRAServer(Server):
             else:
                 # Broadcast to all clients
                 selected_clients = list(self.comm_manager.neighbors.keys())
-            
+
             # Include aggregated prototypes if available
             ortho_content = {
                 'labels': self.vpl_orthogonal_client_labels,
