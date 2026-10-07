@@ -1,16 +1,8 @@
-# FedVPA-GP — pinned to the environment the reported results were produced in.
-# Python 3.10.16, PyTorch 2.2.0 + CUDA 12.1, single 48 GB GPU.
+# FedVPA-GP — pinned to the environment the reported results came from.
+# Python 3.10.16, PyTorch 2.2.0 + CUDA 12.1.
 #
-# PyTorch is NOT pinned here because it must come from the CUDA index.
-# Install it first, then this file. See docs/ENVIRONMENT.md for the full
-# walkthrough:
-#
-#   conda create -n fedvpagp python=3.10 -y
-#   conda activate fedvpagp
-#   pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
-#       --index-url https://download.pytorch.org/whl/cu121
-#   pip install -r requirements.txt
-#   pip install -e . --no-deps
+# PyTorch is not pinned here; it must come from the CUDA index and be
+# installed first. See the README for the full sequence.
 
 # --- Core numerics ---------------------------------------------------------
 # numpy is held below 1.23 because scikit-learn 1.0.2 and scipy 1.7.3 are
