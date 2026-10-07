@@ -11,11 +11,27 @@ FedVPA-GP addresses that collapse with two mechanisms:
 - **Federated Mixture Prior.** Instead of a fixed `N(0, I)` prior, the server aggregates peer client posteriors into `p_mixture(z) = Σ_j w_j · N(z; μ_j, σ_j²)`, with the mixture weights `w_j` produced by a learnable Gumbel-Softmax relaxation. Clients are pulled toward peers with similar preference structure rather than toward an uninformative origin. The KL term is computed with a log-sum-exp trick for numerical stability.
 - **Orthogonal Loss.** `M` learnable prototype vectors, initialised as an orthonormal basis via QR decomposition, anchor the latent space. A pull term aligns each client's `z` to its assigned prototype and a Frobenius orthonormality constraint `‖PPᵀ − I‖²_F` keeps the prototypes separated, so distinct preference types occupy distinct subspaces.
 
+## Quickstart
+
+```bash
+conda create -n fedvpagp python=3.10 -y && conda activate fedvpagp
+pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
+    --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt && pip install -e . --no-deps
+
+bash scripts/run_selector.sh 10 0     # Stage 1, K=10 clients, GPU 0  (~4h)
+bash scripts/run_rl.sh       10 0     # Stage 2, needs Stage 1 first  (~10h)
+```
+
+Stage 1 needs no API key. Stage 2 needs one only to compute win-rates — see [Do you need an OpenAI API key?](#do-you-need-an-openai-api-key) below.
+
 ## Scope of this repository
 
 This is a **minimal reproduction package**, not the full research codebase. It contains exactly what is needed to reproduce the FedVPA-GP rows of the main table on HH-RLHF with Qwen2-0.5B at **K = 10** and **K = 100** clients.
 
 Deliberately not included: the FedDPO / FedBiscuit / FedVPL baseline configurations, the ablation study, the unseen-client generalization experiment, the Gemma-2B and UltraFeedback runs, the hyperparameter search, and the SLURM batch tooling. The underlying framework still supports those; only the experiment configurations were removed.
+
+Stage 1 of the K=10 configuration has been run end to end from this repository to confirm it is self-contained: 50 rounds, converging to preference accuracy 0.993 with the KL term holding at a stable non-zero plateau. Reference values to compare against are in [docs/REPRODUCE.md](docs/REPRODUCE.md).
 
 ## Results
 
@@ -30,7 +46,11 @@ GPT-4 win-rate (%) on HH-RLHF with the strict non-IID partition, Qwen2-0.5B. The
 
 Baseline rows are shown for context; only the FedVPA-GP row is reproducible from this repository.
 
-FedVPA-GP is the only method that improves on **both** axes simultaneously. Note that the win-rate peak does not fall on the final round — it typically lands between rounds 30 and 60, which is why Stage 2 checkpoints every 10 rounds. Selecting the reported operating point means picking the Pareto-best round across the evaluated checkpoints.
+The judge is `gpt-4o-mini`, which is what these configs use and what the paper specifies for cost efficiency — so expect to see that model name rather than `gpt-4` in the logs. Each evaluated round judges the fine-tuned model's response against the frozen base model's on the same prompt, and the win-rate is the share of comparisons the fine-tuned model wins.
+
+FedVPA-GP is the only method that improves on **both** axes simultaneously — a Pareto improvement rather than a trade of helpfulness for harmlessness.
+
+One thing to know before you compare a run against this table: **the win-rate peak does not fall on the final round.** Win-rates rise, peak partway through training, then decline as the policy overfits the reward model. That is why Stage 2 checkpoints every 10 rounds — the reported operating point is the Pareto-best round across the evaluated checkpoints, not round 50. Taking the last round by default will understate the result.
 
 ## Repository layout
 
@@ -55,8 +75,15 @@ federatedscope/
   llm/metric/winrate_metrics.py                  GPT win-rate evaluation
   llm/dataloader/hh_rlhf.py                      HH-RLHF loading and partitioning
   core/                                          FederatedScope framework
-docs/REPRODUCE.md               step-by-step reproduction guide
+docs/
+  ENVIRONMENT.md                environment setup and version constraints
+  REPRODUCE.md                  step-by-step reproduction guide
+requirements.txt                pinned to the environment the results came from
+.env.example                    template for the optional OpenAI key
+LICENSE  NOTICE                 Apache 2.0 and upstream attribution
 ```
+
+Checkpoints, logs, `exp/` output, and the dataset cache are gitignored; nothing in the repo is a build artifact.
 
 ## Installation
 
@@ -69,15 +96,26 @@ conda activate fedvpagp
 pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
     --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
-pip install -e .[llm]
+pip install -e . --no-deps
 ```
 
-Stage 2 evaluation calls the OpenAI API. Copy `.env.example` to `.env` and set your key:
+`--no-deps` matters: `setup.py` carries the upstream FederatedScope dependency ranges, which are broader than the pins in `requirements.txt` and will upgrade numpy back out of the range scikit-learn 1.0.2 needs. See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for the full walkthrough and the three pins that are load-bearing.
+
+### Do you need an OpenAI API key?
+
+Only for the win-rate numbers. Specifically:
+
+- **Stage 1 needs no key at all.** The selector trains and converges without ever contacting the API.
+- **Stage 2 trains fine without one too.** The key is used in exactly one place — `federatedscope/llm/metric/winrate_metrics.py`, which calls `gpt-4o-mini` to judge your fine-tuned model's responses against the frozen baseline's. Without a key you still get a trained z-conditioned policy; you just get no win-rate metric to compare against Table 1.
+
+So if you want to study or extend the method, you can skip this entirely. If you want to reproduce the published numbers, supply your own key:
 
 ```bash
 cp .env.example .env
 # edit .env and set OPENAI_API_KEY
 ```
+
+`.env` is gitignored. `scripts/run_rl.sh` sources it automatically if `OPENAI_API_KEY` is not already exported, and warns rather than failing silently when it finds neither.
 
 ## Data
 
@@ -103,11 +141,20 @@ bash scripts/run_rl.sh 10 0
 bash scripts/run_rl.sh 100 0
 ```
 
-Both launchers honour `DATA_ROOT`, `CKPT_DIR`, and `LOG_DIR` environment variables. Stage 1 takes roughly 7 hours at K=100; Stage 2 takes roughly 20 hours for 70 rounds, dominated by generation and GPT-judged evaluation. See [docs/REPRODUCE.md](docs/REPRODUCE.md) for the detailed walkthrough.
+The two positional arguments are the client count (`10` or `100`) and the GPU index. Both launchers honour `DATA_ROOT`, `CKPT_DIR`, and `LOG_DIR` environment variables, and `run_rl.sh` refuses to start if the Stage 1 checkpoint it needs is missing.
+
+Expect roughly these wall-clock times on one A6000. The Stage 1 K=10 figure is measured; the rest are scaled from it and from earlier runs.
+
+| | K=10 | K=100 |
+|---|---|---|
+| Stage 1 selector, 50 rounds | 4h15m (measured) | ~7 h |
+| Stage 2 DPO, 50 rounds | ~10 h | ~15 h |
+
+Stage 2 is dominated by response generation and GPT-judged evaluation rather than by the DPO updates. See [docs/REPRODUCE.md](docs/REPRODUCE.md) for the detailed walkthrough, what to watch in the logs, and troubleshooting.
 
 ## Hyperparameters
 
-Matching Appendix A of the paper.
+Matching Table 4 (Appendix B) of the paper. Where the paper gives a model-dependent range, the value below is the one for Qwen2-0.5B, which is the model these configs use.
 
 | Parameter | Stage 1 | Stage 2 |
 |---|---|---|

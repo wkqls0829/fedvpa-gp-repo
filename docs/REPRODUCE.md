@@ -24,7 +24,7 @@ conda activate fedvpagp
 pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
     --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
-pip install -e .[llm]
+pip install -e . --no-deps
 
 cp .env.example .env
 # edit .env: OPENAI_API_KEY=sk-...
@@ -117,8 +117,9 @@ test_harmlessness_winrate: 82.31
 Collect them across rounds:
 
 ```bash
-grep -oE "'Round': [0-9]+, 'Results_raw': \{[^}]*\}" outputs/rl_n100.log \
-  | sed -E "s/.*'Round': ([0-9]+).*helpfulness_winrate': ([0-9.]+), 'test_harmlessness_winrate': ([0-9.]+).*/round \1: helpful=\2 harmless=\3/"
+grep -aoE "'Round': [0-9]+, 'Results_raw': \{[^}]*\}" outputs/rl_n100.log \
+  | sed -E "s/.*'Round': ([0-9]+).*helpfulness_winrate': ([0-9.]+), 'test_harmlessness_winrate': ([0-9.]+).*/round \1: helpful=\2 harmless=\3/" \
+  | grep "^round"
 ```
 
 The reported operating point is the **Pareto-best round**, not the last one. Win-rates rise, peak somewhere in the middle of training, and then decline as the policy overfits the reward model — so evaluate the saved checkpoints and take the round that is best on both axes jointly. Taking the final round by default will understate the result.

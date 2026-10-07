@@ -165,3 +165,4 @@ benchmark_output/
 *.out
 
 # No new scripts 
+.run_pid
